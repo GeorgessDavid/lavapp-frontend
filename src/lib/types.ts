@@ -29,6 +29,46 @@ export interface User {
   nombre: string;
   email: string;
   rol: Role;
+  lavaderoId?: number;
+}
+
+export type PlanFeature =
+  | "RESERVAS"
+  | "INGRESOS"
+  | "COLA"
+  | "CAPACIDAD"
+  | "PUESTOS"
+  | "ESTADOS"
+  | "TIEMPOS"
+  | "DEMORAS"
+  | "AVISOS"
+  | "HISTORIAL_BASICO"
+  | "REPORTES_AVANZADOS"
+  | "HISTORIAL_COMPLETO"
+  | "EXPORTACION_DATOS"
+  | "ROLES_PERMISOS"
+  | "CONFIGURACION_AVANZADA"
+  | "SOPORTE_PRIORITARIO"
+  | "INTEGRACIONES";
+
+export interface PlanActual {
+  lavaderoId: number;
+  planId: number;
+  nombre: "Básico" | "Pro" | "Empresa";
+  precioMensual: number;
+  moneda: string;
+  periodicidad: "MENSUAL" | "ANUAL";
+  funcionalidades: PlanFeature[];
+  volumenLavadosReferenciaMensual: number;
+  aclaracionVolumen: string;
+}
+
+export interface CapacidadActual {
+  lavaderoId: number;
+  capacidadMaxima: number;
+  lugaresOcupados: number;
+  lugaresDisponibles: number;
+  sobreCapacidad: boolean;
 }
 
 export interface Cliente {
