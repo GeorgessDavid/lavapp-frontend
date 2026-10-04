@@ -1,5 +1,12 @@
-import type { Atencion, LoginResponse, Role } from "./types";
+import type {
+  Atencion,
+  CapacidadActual,
+  LoginResponse,
+  PlanActual,
+  Role,
+} from "./types";
 import { NEXT_STAGE, users, atenciones as seedAtenciones } from "./mock-data";
+import { planes } from "./plans";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL;
 const USE_MOCK =
@@ -17,7 +24,21 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     },
   });
   if (!res.ok) {
-    throw new Error(`Error ${res.status} en ${path}`);
+    let message = `Error ${res.status} en ${path}`;
+    try {
+      const body: unknown = await res.json();
+      if (
+        body !== null &&
+        typeof body === "object" &&
+        "detail" in body &&
+        typeof body.detail === "string"
+      ) {
+        message = body.detail;
+      }
+    } catch (error) {
+      if (!(error instanceof SyntaxError)) throw error;
+    }
+    throw new Error(message);
   }
   return (await res.json()) as T;
 }
@@ -59,6 +80,95 @@ export async function patchEstado(
     method: "PATCH",
     body: JSON.stringify({ estado, boxId }),
   });
+}
+
+export async function fetchCapacidad(
+  lavaderoId: number,
+  ocupadosEnDemo: number,
+): Promise<CapacidadActual> {
+  if (USE_MOCK) {
+    const capacidadMaxima = Number(
+      localStorage.getItem(`lavapp_demo_capacidad_${lavaderoId}`) ?? 10,
+    );
+    const diferencia = capacidadMaxima - ocupadosEnDemo;
+    return {
+      lavaderoId,
+      capacidadMaxima,
+      lugaresOcupados: ocupadosEnDemo,
+      lugaresDisponibles: Math.max(0, diferencia),
+      sobreCapacidad: diferencia < 0,
+    };
+  }
+  return request<CapacidadActual>(`/lavaderos/${lavaderoId}/capacidad`);
+}
+
+export async function updateCapacidad(
+  lavaderoId: number,
+  capacidadMaxima: number,
+  ocupadosEnDemo: number,
+): Promise<CapacidadActual> {
+  if (USE_MOCK) {
+    if (!Number.isInteger(capacidadMaxima) || capacidadMaxima <= 0) {
+      throw new Error("La capacidad máxima debe ser un entero mayor que cero.");
+    }
+    if (capacidadMaxima < ocupadosEnDemo) {
+      throw new Error(
+        `La capacidad no puede ser menor a los ${ocupadosEnDemo} vehículos ingresados.`,
+      );
+    }
+    localStorage.setItem(
+      `lavapp_demo_capacidad_${lavaderoId}`,
+      String(capacidadMaxima),
+    );
+    window.dispatchEvent(new Event("lavapp:capacity-updated"));
+    return fetchCapacidad(lavaderoId, ocupadosEnDemo);
+  }
+  return request<CapacidadActual>(`/lavaderos/${lavaderoId}/capacidad`, {
+    method: "PATCH",
+    body: JSON.stringify({ capacidadMaxima }),
+  });
+}
+
+export async function fetchPlanActual(lavaderoId: number): Promise<PlanActual> {
+  if (USE_MOCK) {
+    const selectedName =
+      typeof window !== "undefined"
+        ? localStorage.getItem(`lavapp_demo_plan_${lavaderoId}`) ?? "Pro"
+        : "Pro";
+    const selectedPlan = planes.find((plan) => plan.nombre === selectedName);
+    if (!selectedPlan) throw new Error("El plan de demostración no es válido");
+    return {
+      lavaderoId,
+      planId: planes.indexOf(selectedPlan) + 1,
+      nombre: selectedPlan.nombre,
+      precioMensual: selectedPlan.precioMensual,
+      moneda: "ARS",
+      periodicidad: "MENSUAL",
+      funcionalidades: selectedPlan.permisos,
+      volumenLavadosReferenciaMensual: selectedPlan.volumenReferencia,
+      aclaracionVolumen:
+        "Volumen orientativo; no bloquea el uso ni genera cargos por lavado.",
+    };
+  }
+  return request<PlanActual>(`/lavaderos/${lavaderoId}/plan`);
+}
+
+export async function simulatePlanChange(
+  lavaderoId: number,
+  nombrePlan: PlanActual["nombre"],
+): Promise<PlanActual> {
+  if (!USE_MOCK) {
+    throw new Error(
+      "El cambio de plan real requiere el catálogo de planes y autorización del backend.",
+    );
+  }
+  if (!planes.some((plan) => plan.nombre === nombrePlan)) {
+    throw new Error("El plan seleccionado no existe.");
+  }
+
+  localStorage.setItem(`lavapp_demo_plan_${lavaderoId}`, nombrePlan);
+  window.dispatchEvent(new Event("lavapp:plan-updated"));
+  return fetchPlanActual(lavaderoId);
 }
 
 export function nextStageOf(estado: Atencion["estado"]) {
