@@ -11,40 +11,28 @@ import {
   Gauge,
   History,
   BarChart3,
-  BadgeDollarSign,
-  LockKeyhole,
   LayoutDashboard,
   LogOut,
   ParkingCircle,
   Search,
   Users,
-  type LucideIcon,
 } from "lucide-react";
 import { Logo } from "@/components/brand/Logo";
 import { useApp } from "@/lib/store";
-import { fetchPlanActual } from "@/lib/api";
-import type { PlanActual, PlanFeature } from "@/lib/types";
 import { clock, todayLabel } from "@/lib/format";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 
-const nav: {
-  href: string;
-  label: string;
-  icon: LucideIcon;
-  owner?: boolean;
-  feature?: PlanFeature;
-}[] = [
-  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, feature: "CAPACIDAD" },
-  { href: "/capacidad", label: "Capacidad", icon: Gauge, feature: "CAPACIDAD" },
-  { href: "/cola", label: "Cola", icon: ClipboardList, feature: "COLA" },
-  { href: "/ingresos", label: "Ingresos", icon: Car, feature: "INGRESOS" },
-  { href: "/puestos", label: "Puestos y lavados", icon: ParkingCircle, feature: "PUESTOS" },
-  { href: "/reservas", label: "Reservas", icon: CalendarDays, feature: "RESERVAS" },
-  { href: "/historial", label: "Historial", icon: History, feature: "HISTORIAL_BASICO" },
+const nav = [
+  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/capacidad", label: "Capacidad", icon: Gauge },
+  { href: "/cola", label: "Cola", icon: ClipboardList },
+  { href: "/ingresos", label: "Ingresos", icon: Car },
+  { href: "/puestos", label: "Puestos y lavados", icon: ParkingCircle },
+  { href: "/reservas", label: "Reservas", icon: CalendarDays },
+  { href: "/historial", label: "Historial", icon: History },
   { href: "/vehiculos", label: "Vehículos", icon: Users },
   { href: "/fidelizacion", label: "Fidelización", icon: Gift },
   { href: "/reportes", label: "Reportes", icon: BarChart3, owner: true },
-  { href: "/plan", label: "Mi Plan", icon: BadgeDollarSign, owner: true },
 ];
 
 export function AppShell({ children }: { children: ReactNode }) {
@@ -52,42 +40,11 @@ export function AppShell({ children }: { children: ReactNode }) {
   const router = useRouter();
   const { user, logout, toast, clearToast, atenciones } = useApp();
   const [now, setNow] = useState(clock());
-  const [plan, setPlan] = useState<PlanActual | null>(null);
-  const [planError, setPlanError] = useState("");
 
   useEffect(() => {
     if (!user) router.replace("/login");
     else if (user.rol === "FLOTA") router.replace("/flotas");
   }, [user, router]);
-
-  useEffect(() => {
-    let cancelled = false;
-    if (!user || user.rol === "FLOTA") return;
-    if (user.lavaderoId === undefined) return;
-    const lavaderoId = user.lavaderoId;
-    const cargarPlan = () => fetchPlanActual(lavaderoId)
-      .then((currentPlan) => {
-        if (!cancelled) {
-          setPlan(currentPlan);
-          setPlanError("");
-        }
-      })
-      .catch((error: unknown) => {
-        if (!cancelled) {
-          setPlanError(
-            error instanceof Error
-              ? error.message
-              : "No se pudo consultar el plan del establecimiento.",
-          );
-        }
-      });
-    void cargarPlan();
-    window.addEventListener("lavapp:plan-updated", cargarPlan);
-    return () => {
-      cancelled = true;
-      window.removeEventListener("lavapp:plan-updated", cargarPlan);
-    };
-  }, [user]);
 
   useEffect(() => {
     const id = setInterval(() => setNow(clock()), 30000);
@@ -108,12 +65,6 @@ export function AppShell({ children }: { children: ReactNode }) {
   if (!user || user.rol === "FLOTA") return null;
 
   const items = nav.filter((item) => !item.owner || user.rol === "DUENO");
-  const planForUser =
-    plan?.lavaderoId === user.lavaderoId ? plan : null;
-  const visiblePlanError =
-    user.lavaderoId === undefined
-      ? "No se pudo identificar el establecimiento de esta cuenta."
-      : planError;
 
   return (
     <div className="flex min-h-screen bg-surface">
@@ -123,28 +74,6 @@ export function AppShell({ children }: { children: ReactNode }) {
           {items.map((item) => {
             const active = pathname === item.href;
             const Icon = item.icon;
-            const hasFeature =
-              !item.feature ||
-              Boolean(
-                planForUser?.funcionalidades.includes(item.feature),
-              );
-            if (!hasFeature) {
-              const lockReason = planForUser
-                ? `No incluido en el plan ${planForUser.nombre}`
-                : "No se pudieron consultar los permisos del plan";
-              return (
-                <span
-                  key={item.href}
-                  title={lockReason}
-                  aria-label={`${item.label}. ${lockReason}`}
-                  className="flex cursor-not-allowed items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-white/35"
-                >
-                  <Icon className="h-4 w-4" />
-                  <span className="flex-1">{item.label}</span>
-                  <LockKeyhole className="h-3.5 w-3.5" />
-                </span>
-              );
-            }
             return (
               <Link
                 key={item.href}
@@ -160,16 +89,6 @@ export function AppShell({ children }: { children: ReactNode }) {
               </Link>
             );
           })}
-          {planForUser && (
-            <p className="mt-3 rounded-xl bg-white/8 px-3 py-2 text-xs text-white/60">
-              Plan activo: <span className="font-semibold text-white">{planForUser.nombre}</span>
-            </p>
-          )}
-          {visiblePlanError && (
-            <p role="status" className="mt-3 rounded-xl bg-white/8 px-3 py-2 text-xs text-amber-200">
-              Permisos del plan no disponibles.
-            </p>
-          )}
         </nav>
         <button
           onClick={() => {
