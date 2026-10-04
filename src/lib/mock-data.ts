@@ -18,6 +18,7 @@ export const users: (User & { password: string })[] = [
     nombre: "Tomás Herrera",
     email: "operador@lavapp.com",
     rol: "OPERADOR",
+    lavaderoId: 1,
     password: "operador",
   },
   {
@@ -25,6 +26,7 @@ export const users: (User & { password: string })[] = [
     nombre: "Carolina Avellaneda",
     email: "dueno@lavapp.com",
     rol: "DUENO",
+    lavaderoId: 1,
     password: "dueno",
   },
   {

@@ -8,6 +8,7 @@ import {
   Car,
   ClipboardList,
   Gift,
+  Gauge,
   History,
   BarChart3,
   LayoutDashboard,
@@ -23,6 +24,7 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 
 const nav = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/capacidad", label: "Capacidad", icon: Gauge },
   { href: "/cola", label: "Cola", icon: ClipboardList },
   { href: "/ingresos", label: "Ingresos", icon: Car },
   { href: "/puestos", label: "Puestos y lavados", icon: ParkingCircle },

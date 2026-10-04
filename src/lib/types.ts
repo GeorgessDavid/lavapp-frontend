@@ -29,6 +29,15 @@ export interface User {
   nombre: string;
   email: string;
   rol: Role;
+  lavaderoId?: number;
+}
+
+export interface CapacidadActual {
+  lavaderoId: number;
+  capacidadMaxima: number;
+  lugaresOcupados: number;
+  lugaresDisponibles: number;
+  sobreCapacidad: boolean;
 }
 
 export interface Cliente {
