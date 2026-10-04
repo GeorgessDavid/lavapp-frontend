@@ -1,0 +1,20 @@
+▲ Next.js 16.3.6 (Turbopack)
+- Local:         http://localhost:3000
+- Network:       http://192.168.0.241:3000
+✓ Ready in 827ms
+✓ Running next.config.ts took 61ms
+Creating turbopack project {
+  dir: 'C:\\Users\\Mariano\\Desktop\\Seminario\\lavapp-frontend',
+  testMode: true
+}
+
+ GET /reservas 200 in 2.4s (next.js: 2.1s, application-code: 262ms)
+ GET / 200 in 500ms (next.js: 452ms, application-code: 47ms)
+ GET /login 200 in 216ms (next.js: 188ms, application-code: 29ms)
+ GET /login 200 in 24ms (next.js: 9ms, application-code: 15ms)
+ GET /dashboard 200 in 282ms (next.js: 251ms, application-code: 31ms)
+ GET / 200 in 132ms (next.js: 19ms, application-code: 113ms)
+ GET /login 200 in 112ms (next.js: 10ms, application-code: 102ms)
+ GET /login 200 in 72ms (next.js: 12ms, application-code: 59ms)
+ GET /dashboard 200 in 77ms (next.js: 12ms, application-code: 65ms)
+ GET /reservas 200 in 69ms (next.js: 12ms, application-code: 57ms)
