@@ -8,7 +8,6 @@ import {
   Car,
   ClipboardList,
   Gift,
-  Gauge,
   History,
   BarChart3,
   BadgeDollarSign,
@@ -35,7 +34,6 @@ const nav: {
   feature?: PlanFeature;
 }[] = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, feature: "CAPACIDAD" },
-  { href: "/capacidad", label: "Capacidad", icon: Gauge, feature: "CAPACIDAD" },
   { href: "/cola", label: "Cola", icon: ClipboardList, feature: "COLA" },
   { href: "/ingresos", label: "Ingresos", icon: Car, feature: "INGRESOS" },
   { href: "/puestos", label: "Puestos y lavados", icon: ParkingCircle, feature: "PUESTOS" },

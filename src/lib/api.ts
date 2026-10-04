@@ -1,6 +1,5 @@
 import type {
   Atencion,
-  CapacidadActual,
   LoginResponse,
   PlanActual,
   Role,
@@ -79,53 +78,6 @@ export async function patchEstado(
   return request<Atencion>(`/api/atenciones/${id}/estado`, {
     method: "PATCH",
     body: JSON.stringify({ estado, boxId }),
-  });
-}
-
-export async function fetchCapacidad(
-  lavaderoId: number,
-  ocupadosEnDemo: number,
-): Promise<CapacidadActual> {
-  if (USE_MOCK) {
-    const capacidadMaxima = Number(
-      localStorage.getItem(`lavapp_demo_capacidad_${lavaderoId}`) ?? 10,
-    );
-    const diferencia = capacidadMaxima - ocupadosEnDemo;
-    return {
-      lavaderoId,
-      capacidadMaxima,
-      lugaresOcupados: ocupadosEnDemo,
-      lugaresDisponibles: Math.max(0, diferencia),
-      sobreCapacidad: diferencia < 0,
-    };
-  }
-  return request<CapacidadActual>(`/lavaderos/${lavaderoId}/capacidad`);
-}
-
-export async function updateCapacidad(
-  lavaderoId: number,
-  capacidadMaxima: number,
-  ocupadosEnDemo: number,
-): Promise<CapacidadActual> {
-  if (USE_MOCK) {
-    if (!Number.isInteger(capacidadMaxima) || capacidadMaxima <= 0) {
-      throw new Error("La capacidad máxima debe ser un entero mayor que cero.");
-    }
-    if (capacidadMaxima < ocupadosEnDemo) {
-      throw new Error(
-        `La capacidad no puede ser menor a los ${ocupadosEnDemo} vehículos ingresados.`,
-      );
-    }
-    localStorage.setItem(
-      `lavapp_demo_capacidad_${lavaderoId}`,
-      String(capacidadMaxima),
-    );
-    window.dispatchEvent(new Event("lavapp:capacity-updated"));
-    return fetchCapacidad(lavaderoId, ocupadosEnDemo);
-  }
-  return request<CapacidadActual>(`/lavaderos/${lavaderoId}/capacidad`, {
-    method: "PATCH",
-    body: JSON.stringify({ capacidadMaxima }),
   });
 }
 

@@ -7,7 +7,6 @@ import { Plate, StageBadge } from "@/components/ui/badges";
 import { useApp } from "@/lib/store";
 import { useLookups } from "@/lib/lookups";
 import { time } from "@/lib/format";
-import { CapacidadResumen } from "@/components/capacity/CapacidadResumen";
 
 export default function DashboardPage() {
   const { atenciones, boxes, avanzar } = useApp();
@@ -54,15 +53,13 @@ export default function DashboardPage() {
           icon={<Sparkles className="h-5 w-5" />}
         />
         <KpiCard
-          label="Puestos ocupados"
+          label="Capacidad"
           value={`${ocupados.length}/${boxes.length}`}
-          hint="Puestos de lavado"
+          hint="Puestos ocupados"
           tone="orange"
           icon={<Car className="h-5 w-5" />}
         />
       </div>
-
-      <CapacidadResumen compacto />
 
       <div className="grid gap-5 xl:grid-cols-[1.4fr_1fr]">
         <Card title="Cola de atención">

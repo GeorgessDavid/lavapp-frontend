@@ -63,14 +63,6 @@ export interface PlanActual {
   aclaracionVolumen: string;
 }
 
-export interface CapacidadActual {
-  lavaderoId: number;
-  capacidadMaxima: number;
-  lugaresOcupados: number;
-  lugaresDisponibles: number;
-  sobreCapacidad: boolean;
-}
-
 export interface Cliente {
   id: string;
   nombre: string;
