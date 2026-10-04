@@ -93,8 +93,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
-    setUser(loadUser());
-    setHydrated(true);
+    const timeout = window.setTimeout(() => {
+      setUser(loadUser());
+      setHydrated(true);
+    }, 0);
+    return () => window.clearTimeout(timeout);
   }, []);
 
   const value = useMemo(() => {
