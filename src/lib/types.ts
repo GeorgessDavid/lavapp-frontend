@@ -127,6 +127,24 @@ export interface Atencion {
   fotos: { tipo: "ANTES" | "DESPUES"; url: string }[];
 }
 
+export type QueueOrigin = "RESERVA" | "ESPONTANEO";
+
+export interface OrdenColaApi {
+  ordenId: number;
+  estado: "EN_ESPERA";
+  ingreso: string;
+  patente: string;
+  modelo: string;
+  clienteNombre: string;
+  clienteTelefono: string;
+  servicioNombre: string;
+  servicioPrecio: number;
+  empleadoNombre: string | null;
+  tipoIngreso: QueueOrigin;
+  horarioReserva: string | null;
+  servicioDuracionMin: number;
+}
+
 export interface Reserva {
   id: string;
   clienteId: string;
