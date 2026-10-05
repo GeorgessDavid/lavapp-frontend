@@ -2,6 +2,7 @@ import type {
   Atencion,
   CapacidadActual,
   LoginResponse,
+  OrdenColaApi,
   PlanActual,
   Role,
   User,
@@ -175,6 +176,14 @@ export async function loginRequest(
 export async function fetchAtenciones(): Promise<Atencion[]> {
   if (USE_MOCK) return structuredClone(seedAtenciones);
   return request<Atencion[]>("/api/atenciones");
+}
+
+export async function fetchColaPrioritaria(
+  lavaderoId: number,
+): Promise<OrdenColaApi[]> {
+  return request<OrdenColaApi[]>(
+    `/lavaderos/${lavaderoId}/ordenes?estado=EN_ESPERA`,
+  );
 }
 
 export async function patchEstado(
