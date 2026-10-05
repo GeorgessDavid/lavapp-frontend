@@ -11,8 +11,8 @@ pnpm dev                        # http://localhost:3000
 ```
 
 El backend tiene que estar corriendo (ver `lavapp-backend/README.md`: MySQL + Redis con
-`docker compose up -d` y `mvnw spring-boot:run`) con un usuario cargado, por ejemplo el de
-`database/SC-109-usuario-demo.sql` (`admin@lavapp.com` / `Lavapp2026!`).
+`docker compose up -d` y `mvnw spring-boot:run`) con un usuario cargado en `usuarios`; cómo
+crearlo está explicado en ese README. No se versionan credenciales de prueba.
 
 ### Autenticación
 
