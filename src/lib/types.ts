@@ -181,11 +181,6 @@ export interface EmpresaFlota {
   vehiculoIds: string[];
 }
 
-export interface LoginResponse {
-  token: string;
-  user: User;
-}
-
 export interface DashboardKpis {
   enEspera: number;
   enProceso: number;
