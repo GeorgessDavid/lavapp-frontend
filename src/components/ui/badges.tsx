@@ -11,6 +11,7 @@ const stageClass: Record<ServiceStage, string> = {
 };
 
 const reservaClass: Record<ReservationStatus, string> = {
+  MODIFICADA: "bg-[#DCEBFF] text-[#2563EB]",
   PENDIENTE: "bg-[#FFF4D6] text-[#B45309]",
   CONFIRMADA: "bg-[#DDF8E8] text-[#15803D]",
   EN_CURSO: "bg-[#DCEBFF] text-[#2563EB]",
@@ -31,6 +32,7 @@ export function StageBadge({ estado }: { estado: ServiceStage }) {
 
 export function ReservaBadge({ estado }: { estado: ReservationStatus }) {
   const labels: Record<ReservationStatus, string> = {
+    MODIFICADA: "Modificada",
     PENDIENTE: "Pendiente",
     CONFIRMADA: "Confirmada",
     EN_CURSO: "En curso",

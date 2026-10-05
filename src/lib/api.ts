@@ -88,7 +88,8 @@ export interface ReservaApi {
   puestoNombre: string;
   inicio: string;
   fin: string;
-  estado: "PENDIENTE" | "CONFIRMADA" | "CANCELADA";
+  estado: "PENDIENTE" | "MODIFICADA" | "CONFIRMADA" | "CANCELADA";
+  ordenTrabajoId: number | null;
 }
 
 export function listarClientesReserva(lavaderoId: number) {
@@ -130,8 +131,20 @@ export function listarPuestosReserva(lavaderoId: number) {
   return request<ReservaPuesto[]>(`/lavaderos/${lavaderoId}/puestos`);
 }
 
-export function listarReservas(lavaderoId: number) {
-  return request<ReservaApi[]>(`/lavaderos/${lavaderoId}/reservas`);
+export function listarReservas(lavaderoId: number, soloActivas = true) {
+  return request<ReservaApi[]>(`/lavaderos/${lavaderoId}/reservas?soloActivas=${soloActivas}`, { cache: "no-store" });
+}
+
+export function obtenerReserva(lavaderoId: number, id: number) {
+  return request<ReservaApi>(`/lavaderos/${lavaderoId}/reservas/${id}`, { cache: "no-store" });
+}
+
+export function actualizarReserva(lavaderoId: number, id: number, payload: { servicioId: number; fechaHorario: string }) {
+  return request<ReservaApi>(`/lavaderos/${lavaderoId}/reservas/${id}`, { method: "PUT", body: JSON.stringify(payload) });
+}
+
+export function cancelarReserva(lavaderoId: number, id: number) {
+  return request<ReservaApi>(`/lavaderos/${lavaderoId}/reservas/${id}/cancelar`, { method: "POST" });
 }
 
 export function crearReservaApi(

@@ -10,6 +10,7 @@ export type ServiceStage =
 
 export type ReservationStatus =
   | "PENDIENTE"
+  | "MODIFICADA"
   | "CONFIRMADA"
   | "EN_CURSO"
   | "CANCELADA"

@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   CalendarDays,
   Car,
@@ -12,6 +12,7 @@ import {
   UserPlus,
 } from "lucide-react";
 import { Card, KpiCard } from "@/components/ui/Card";
+import { ReservaGestion, reservaEditable, type ReservaAccion } from "@/components/ReservaGestion";
 import { Plate, ReservaBadge } from "@/components/ui/badges";
 import {
   ApiError,
@@ -64,6 +65,11 @@ export default function ReservasPage() {
   const [servicios, setServicios] = useState<ReservaServicio[]>([]);
   const [puestos, setPuestos] = useState<ReservaPuesto[]>([]);
   const [reservas, setReservas] = useState<ReservaApi[]>([]);
+  const [seleccionada, setSeleccionada] = useState<{ reserva: ReservaApi; accion: ReservaAccion } | null>(null);
+  const [vista, setVista] = useState("activas");
+  const [desde, setDesde] = useState("");
+  const [hasta, setHasta] = useState("");
+  const revision = useRef(0);
   const [clienteId, setClienteId] = useState("");
   const [vehiculoId, setVehiculoId] = useState("");
   const [servicioId, setServicioId] = useState("");
@@ -83,6 +89,7 @@ export default function ReservasPage() {
   const [success, setSuccess] = useState<string | null>(null);
 
   const loadPage = useCallback(async () => {
+    const currentRevision = ++revision.current;
     setLoading(true);
     setError(null);
     try {
@@ -91,12 +98,12 @@ export default function ReservasPage() {
           listarClientesReserva(LAVADERO_ID),
           listarServiciosReserva(LAVADERO_ID),
           listarPuestosReserva(LAVADERO_ID),
-          listarReservas(LAVADERO_ID),
+          listarReservas(LAVADERO_ID, false),
         ]);
       setClientes(nextClientes);
       setServicios(nextServicios);
       setPuestos(nextPuestos);
-      setReservas(nextReservas);
+      if (currentRevision === revision.current) setReservas(nextReservas);
       setClienteId((current) => current || String(nextClientes[0]?.id ?? ""));
       setServicioId((current) => current || String(nextServicios[0]?.id ?? ""));
       setPuestoId((current) => current || String(nextPuestos[0]?.id ?? ""));
@@ -111,6 +118,24 @@ export default function ReservasPage() {
     const timeout = window.setTimeout(() => void loadPage(), 0);
     return () => window.clearTimeout(timeout);
   }, [loadPage]);
+
+  useEffect(() => {
+    let active = true;
+    let pending = false;
+    const refresh = async () => {
+      if (pending || document.visibilityState !== "visible") return;
+      pending = true;
+      const currentRevision = revision.current;
+      try {
+        const items = await listarReservas(LAVADERO_ID, false);
+        if (active && currentRevision === revision.current) setReservas(items);
+      } catch { /* El botón Actualizar permite reintentar y consultar errores sin interrumpir una edición. */ }
+      finally { pending = false; }
+    };
+    const interval = window.setInterval(() => void refresh(), 15_000);
+    window.addEventListener("focus", refresh);
+    return () => { active = false; window.clearInterval(interval); window.removeEventListener("focus", refresh); };
+  }, []);
 
   useEffect(() => {
     if (!clienteId || nuevoCliente) return;
@@ -179,6 +204,7 @@ export default function ReservasPage() {
           (a, b) => new Date(a.inicio).getTime() - new Date(b.inicio).getTime(),
         ),
       );
+      revision.current++;
       setSuccess(`Reserva #${created.id} registrada correctamente.`);
       setClienteId(String(resolvedClienteId));
       const refreshedVehicles = await listarVehiculosReserva(
@@ -195,8 +221,14 @@ export default function ReservasPage() {
   }
 
   const today = inputDate(new Date());
+  const activas = reservas.filter(reservaEditable);
+  const rangoInvalido = Boolean(desde && hasta && desde > hasta);
+  const visibles = (vista === "activas" ? activas : reservas).filter((r) => {
+    const date = inputDate(new Date(r.inicio));
+    return !rangoInvalido && (!desde || date >= desde) && (!hasta || date <= hasta);
+  }).sort((a, b) => Date.parse(a.inicio) - Date.parse(b.inicio) || a.id - b.id);
   const reservasHoy = useMemo(
-    () => reservas.filter((reserva) => inputDate(new Date(reserva.inicio)) === today),
+    () => reservas.filter((reserva) => reservaEditable(reserva) && inputDate(new Date(reserva.inicio)) === today),
     [reservas, today],
   );
   const selectedService = servicios.find(
@@ -224,30 +256,37 @@ export default function ReservasPage() {
         </div>
       )}
       {success && (
-        <div className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+        <div role="status" className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
           <CheckCircle2 className="h-4 w-4" /> {success}
         </div>
       )}
 
       <div className="grid gap-4 sm:grid-cols-3">
         <KpiCard label="Reservas de hoy" value={reservasHoy.length} tone="purple" icon={<CalendarDays className="h-5 w-5" />} />
-        <KpiCard label="Pendientes" value={reservas.filter((r) => r.estado === "PENDIENTE").length} tone="orange" icon={<Clock className="h-5 w-5" />} />
+        <KpiCard label="Reservas activas" value={activas.length} tone="orange" icon={<Clock className="h-5 w-5" />} />
         <KpiCard label="Puestos habilitados" value={puestos.length} tone="green" icon={<Car className="h-5 w-5" />} />
       </div>
 
       <div className="grid items-start gap-5 xl:grid-cols-[1.25fr_0.9fr]">
         <Card title="Agenda de próximas reservas">
+          <div className="mb-4 flex flex-wrap items-end gap-3">
+            <label className="text-xs text-slate-500">Vista<select className="field mt-1" value={vista} onChange={(e) => setVista(e.target.value)}><option value="activas">Agenda activa</option><option value="todas">Historial completo</option></select></label>
+            <label className="text-xs text-slate-500">Desde<input type="date" className="field mt-1" value={desde} onChange={(e) => setDesde(e.target.value)} /></label>
+            <label className="text-xs text-slate-500">Hasta<input type="date" className="field mt-1" value={hasta} min={desde || undefined} onChange={(e) => setHasta(e.target.value)} /></label>
+            {(desde || hasta) && <button className="btn-ghost" onClick={() => { setDesde(""); setHasta(""); }}>Limpiar fechas</button>}
+          </div>
+          {rangoInvalido && <p role="alert" className="mb-3 text-sm text-red-700">La fecha hasta debe ser igual o posterior a la fecha desde.</p>}
           {loading ? (
             <div className="grid min-h-48 place-items-center text-sm text-slate-400">
               <LoaderCircle className="mb-2 h-6 w-6 animate-spin" />
               Cargando agenda…
             </div>
-          ) : reservas.length === 0 ? (
+          ) : visibles.length === 0 ? (
             <div className="grid min-h-48 place-items-center rounded-xl border border-dashed border-slate-200 text-center">
               <div>
                 <CalendarDays className="mx-auto mb-2 h-7 w-7 text-slate-300" />
                 <p className="text-sm font-semibold text-navy">La agenda está vacía</p>
-                <p className="text-xs text-slate-400">La primera reserva aparecerá acá.</p>
+                <p className="text-xs text-slate-400">No hay reservas para los filtros seleccionados.</p>
               </div>
             </div>
           ) : (
@@ -255,13 +294,13 @@ export default function ReservasPage() {
               <table className="w-full min-w-[680px] text-sm">
                 <thead>
                   <tr className="border-b border-slate-100">
-                    {['Fecha y hora', 'Cliente', 'Vehículo', 'Servicio', 'Puesto', 'Estado'].map((heading) => (
+                    {['Fecha y hora', 'Cliente', 'Vehículo', 'Servicio', 'Puesto', 'Estado', 'Acciones'].map((heading) => (
                       <th key={heading} className="table-head pb-3">{heading}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
-                  {reservas.map((reserva) => (
+                  {visibles.map((reserva) => (
                     <tr key={reserva.id} className="border-b border-slate-50 last:border-0">
                       <td className="py-3.5 font-medium text-navy">
                         <span className="block capitalize">{readableDate(reserva.inicio)}</span>
@@ -274,6 +313,13 @@ export default function ReservasPage() {
                       <td>{reserva.servicioNombre}</td>
                       <td>{reserva.puestoNombre}</td>
                       <td><ReservaBadge estado={reserva.estado} /></td>
+                      <td className="py-3">
+                        <div className="flex gap-2">
+                          <button className="btn-ghost" aria-label={`Ver detalle de reserva ${reserva.id}`} onClick={() => setSeleccionada({ reserva, accion: "detalle" })}>Detalle</button>
+                          <button className="btn-ghost" disabled={!reservaEditable(reserva)} title={!reservaEditable(reserva) ? "Reserva cancelada o ingreso confirmado" : "Editar reserva"} onClick={() => setSeleccionada({ reserva, accion: "editar" })}>Editar</button>
+                          <button className="btn-ghost text-red-700" disabled={!reservaEditable(reserva)} title={!reservaEditable(reserva) ? "Reserva cancelada o ingreso confirmado" : "Cancelar reserva"} onClick={() => setSeleccionada({ reserva, accion: "cancelar" })}>Cancelar</button>
+                        </div>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -375,6 +421,12 @@ export default function ReservasPage() {
           </form>
         </Card>
       </div>
+      {seleccionada && <ReservaGestion key={`${seleccionada.reserva.id}-${seleccionada.accion}`} reserva={seleccionada.reserva} accion={seleccionada.accion} lavaderoId={LAVADERO_ID} servicios={servicios} onClose={() => setSeleccionada(null)} onSaved={(updated) => {
+        revision.current++;
+        setReservas((current) => current.map((r) => r.id === updated.id ? updated : r));
+        setSuccess(updated.estado === "CANCELADA" ? `Reserva #${updated.id} cancelada. Se conserva en el historial.` : `Reserva #${updated.id} modificada correctamente.`);
+        setError(null);
+      }} />}
     </div>
   );
 }
