@@ -7,9 +7,11 @@ import { Plate, StageBadge } from "@/components/ui/badges";
 import { useApp } from "@/lib/store";
 import { useLookups } from "@/lib/lookups";
 import { time } from "@/lib/format";
+import { LlegadaConReserva } from "@/components/LlegadaConReserva";
 
 export default function IngresosPage() {
-  const { atenciones, vehiculos, clientes, servicios, boxes, checkIn } = useApp();
+  const { atenciones, vehiculos, clientes, servicios, boxes, checkIn, user } = useApp();
+  const lavaderoId = user?.lavaderoId ?? Number(process.env.NEXT_PUBLIC_LAVADERO_ID ?? "1");
   const { cliente, vehiculo, serviciosDe } = useLookups();
   const [patente, setPatente] = useState("");
   const found = useMemo(() => {
@@ -73,8 +75,8 @@ export default function IngresosPage() {
       <div>
         <h1 className="text-2xl font-bold">Ingresos</h1>
         <p className="text-sm text-slate-500">
-          Check-in rápido por patente o carga manual. El sistema estima la espera
-          y arma el link de seguimiento.
+          Buscá la reserva del cliente y confirmá su llegada, o registrá un ingreso
+          sin reserva por patente.
         </p>
       </div>
 
@@ -109,8 +111,10 @@ export default function IngresosPage() {
         />
       </div>
 
+      <LlegadaConReserva key={lavaderoId} lavaderoId={lavaderoId} />
+
       <div className="grid gap-5 xl:grid-cols-[1.2fr_0.8fr]">
-        <Card title="Registrar ingreso">
+        <Card title="Ingreso sin reserva">
           <form onSubmit={onSubmit} className="grid gap-4 sm:grid-cols-2">
             <div className="sm:col-span-2">
               <label className="mb-1 block text-xs font-semibold text-slate-500">

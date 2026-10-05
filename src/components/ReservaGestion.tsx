@@ -73,6 +73,7 @@ export function ReservaGestion({ reserva, accion, lavaderoId, servicios, onClose
     {error && <p role="alert" className="mb-4 rounded-xl bg-red-50 p-3 text-sm text-red-700">{error}</p>}
     {!detalle ? <p role="status">{error ? "El detalle no está disponible." : "Consultando reserva…"}</p> : <>
       <dl className="grid grid-cols-2 gap-4 text-sm">
+        <div className="col-span-2"><dt className="text-slate-500">Código de reserva</dt><dd className="break-all font-mono text-xs">{detalle.codigo}</dd></div>
         <div><dt className="text-slate-500">Cliente</dt><dd className="font-semibold">{detalle.clienteNombre}</dd></div>
         <div><dt className="text-slate-500">Vehículo</dt><dd><Plate value={detalle.patente} /></dd></div>
         <div><dt className="text-slate-500">Servicio</dt><dd>{detalle.servicioNombre}</dd></div>
