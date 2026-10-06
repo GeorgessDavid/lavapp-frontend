@@ -1,7 +1,6 @@
 import type {
   Atencion,
   CapacidadActual,
-  LoginResponse,
   OrdenColaApi,
   PlanActual,
   Role,
@@ -24,14 +23,25 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * Callback que registra el store para cerrar la sesión local cuando el backend responde 401
+ * (sesión expirada en Redis, usuario desactivado, etc.). No aplica al login, donde el 401
+ * significa credenciales inválidas.
+ */
+let onUnauthorized: (() => void) | null = null;
+
+export function setOnUnauthorized(handler: (() => void) | null) {
+  onUnauthorized = handler;
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const token =
-    typeof window !== "undefined" ? localStorage.getItem("lavapp_token") : null;
+  // La autenticación es por cookie de sesión (LAVAPP_SESSION, HttpOnly): el navegador la manda
+  // solo si la request va con credentials: "include" y el origen está habilitado en el backend.
   const res = await fetch(`${API_URL}${path}`, {
     ...init,
+    credentials: "include",
     headers: {
       "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...init?.headers,
     },
   });
@@ -43,8 +53,12 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     } catch {
       // La API puede responder sin cuerpo en errores de infraestructura.
     }
+    if (res.status === 401 && !path.startsWith("/auth/authenticate")) {
+      onUnauthorized?.();
+    }
     throw new ApiError(res.status, message);
   }
+  if (res.status === 204) return undefined as T;
   return (await res.json()) as T;
 }
 
@@ -177,27 +191,91 @@ export function crearReservaApi(
   });
 }
 
+// ----------------------------------------------------------------------------
+// Autenticación (backend: POST /auth/authenticate, GET /auth/me, POST /auth/logout)
+// ----------------------------------------------------------------------------
+
+type RolApi = "ADMIN_LAVAPP" | "DUENO_LAVADERO" | "ENCARGADO" | "EMPLEADO";
+
+/** Usuario tal como lo devuelve el backend en /auth/authenticate y /auth/me. */
+export interface UsuarioApi {
+  id: number;
+  email: string;
+  rol: RolApi;
+  lavaderoId: number | null;
+}
+
+/**
+ * Los roles del backend se proyectan sobre los del front: dueño y admin de LavApp ven la
+ * app completa; encargados y empleados operan. FLOTA no existe en el backend (solo demo).
+ */
+const ROL_API_A_ROLE: Record<RolApi, Role> = {
+  ADMIN_LAVAPP: "DUENO",
+  DUENO_LAVADERO: "DUENO",
+  ENCARGADO: "OPERADOR",
+  EMPLEADO: "OPERADOR",
+};
+
+/** El backend todavía no guarda el nombre: se arma uno legible a partir del email. */
+function nombreDesdeEmail(email: string) {
+  const local = email.split("@")[0] ?? email;
+  const nombre = local
+    .split(/[._-]+/)
+    .filter(Boolean)
+    .map((parte) => parte[0].toUpperCase() + parte.slice(1))
+    .join(" ");
+  return nombre || email;
+}
+
+export function toUser(usuario: UsuarioApi): User {
+  return {
+    id: String(usuario.id),
+    nombre: nombreDesdeEmail(usuario.email),
+    email: usuario.email,
+    rol: ROL_API_A_ROLE[usuario.rol] ?? "OPERADOR",
+    lavaderoId: usuario.lavaderoId ?? undefined,
+  };
+}
+
 export async function loginRequest(
   email: string,
   password: string,
-): Promise<LoginResponse> {
+): Promise<User> {
   if (USE_MOCK) {
     const found = users.find(
       (u) => u.email === email && u.password === password,
     );
     if (!found) throw new Error("Credenciales inválidas");
-    const user: User = {
+    return {
       id: found.id,
       nombre: found.nombre,
       email: found.email,
       rol: found.rol,
     };
-    return { token: `mock.${user.id}.${user.rol}`, user };
   }
-  return request<LoginResponse>("/api/auth/login", {
+  const usuario = await request<UsuarioApi>("/auth/authenticate", {
     method: "POST",
-    body: JSON.stringify({ email, password }),
+    body: JSON.stringify({ email: email.trim(), password }),
   });
+  return toUser(usuario);
+}
+
+/**
+ * Usuario de la sesión actual según el backend. Devuelve null si no hay sesión válida (401).
+ * En modo mock no se usa: el store restaura el usuario desde localStorage.
+ */
+export async function fetchMe(): Promise<User | null> {
+  try {
+    return toUser(await request<UsuarioApi>("/auth/me"));
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 401) return null;
+    throw err;
+  }
+}
+
+export async function logoutRequest(): Promise<void> {
+  if (USE_MOCK) return;
+  await request<void>("/auth/logout", { method: "POST" });
 }
 
 export async function fetchAtenciones(): Promise<Atencion[]> {
