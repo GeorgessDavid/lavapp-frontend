@@ -270,6 +270,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     };
 
     const retirar = (atencionId: string) => {
+      const atencion = atenciones.find((item) => item.id === atencionId);
+      if (!atencion || atencion.estado !== "LISTO") {
+        setToast("Solo se puede registrar el retiro cuando el vehículo está finalizado.");
+        return;
+      }
+
       setAtenciones((prev) =>
         prev.map((a) =>
           a.id === atencionId ? { ...a, estado: "RETIRADO" } : a,
@@ -332,4 +338,3 @@ export function useApp() {
   if (!ctx) throw new Error("useApp debe usarse dentro de AppProvider");
   return ctx;
 }
-

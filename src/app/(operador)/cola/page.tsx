@@ -262,12 +262,18 @@ export default function ColaPage() {
                           Siguiente etapa
                         </button>
                       )}
-                      {a?.estado === "LISTO" && (
+                      {a && (
                         <button
-                          className="text-xs font-semibold text-emerald-600"
+                          className="text-xs font-semibold text-emerald-600 disabled:cursor-not-allowed disabled:text-slate-400"
+                          disabled={a.estado !== "LISTO"}
+                          title={
+                            a.estado === "LISTO"
+                              ? "Registrar el retiro del vehículo finalizado"
+                              : "El retiro se habilita cuando el vehículo está finalizado"
+                          }
                           onClick={() => retirar(a.id)}
                         >
-                          Confirmar retiro
+                          Registrar retiro
                         </button>
                       )}
                     </td>
