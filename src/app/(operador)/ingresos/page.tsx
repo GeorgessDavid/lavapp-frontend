@@ -12,6 +12,8 @@ export default function IngresosPage() {
   const { atenciones, vehiculos, clientes, servicios, boxes, checkIn } = useApp();
   const { cliente, vehiculo, serviciosDe } = useLookups();
   const [patente, setPatente] = useState("");
+  const [clienteId, setClienteId] = useState("");
+  const [busquedaCliente, setBusquedaCliente] = useState("");
   const found = useMemo(() => {
     const v = vehiculos.find(
       (x) =>
@@ -21,6 +23,18 @@ export default function IngresosPage() {
     if (!v) return null;
     return { v, c: clientes.find((c) => c.id === v.clienteId) };
   }, [patente, vehiculos, clientes]);
+  const clientesFiltrados = useMemo(() => {
+    const query = busquedaCliente.trim().toLocaleLowerCase();
+    if (!query) return [];
+    return clientes
+      .filter((c) =>
+        `${c.nombre} ${c.apellido} ${c.telefono}`
+          .toLocaleLowerCase()
+          .includes(query),
+      )
+      .slice(0, 6);
+  }, [busquedaCliente, clientes]);
+  const clienteSeleccionado = clientes.find((c) => c.id === clienteId);
 
   const [nombre, setNombre] = useState("");
   const [telefono, setTelefono] = useState("");
@@ -38,6 +52,8 @@ export default function IngresosPage() {
     );
     if (v) {
       const c = clientes.find((cli) => cli.id === v.clienteId);
+      setClienteId(c?.id ?? "");
+      setBusquedaCliente(c ? `${c.nombre} ${c.apellido}` : "");
       setNombre(`${c?.nombre ?? ""} ${c?.apellido ?? ""}`.trim());
       setTelefono(c?.telefono ?? "");
       setMarca(v.marca);
@@ -49,6 +65,7 @@ export default function IngresosPage() {
     e.preventDefault();
     checkIn({
       patente,
+      clienteId: clienteSeleccionado?.id,
       clienteNombre: nombre,
       telefono,
       marca,
@@ -57,6 +74,8 @@ export default function IngresosPage() {
       observaciones: obs,
     });
     setPatente("");
+    setClienteId("");
+    setBusquedaCliente("");
     setNombre("");
     setTelefono("");
     setMarca("");
@@ -130,27 +149,122 @@ export default function IngresosPage() {
                 </p>
               )}
             </div>
-            <div>
-              <label className="mb-1 block text-xs font-semibold text-slate-500">
-                Cliente
+            <div className="sm:col-span-2">
+              <label
+                htmlFor="buscar-cliente"
+                className="mb-1 block text-xs font-semibold text-slate-500"
+              >
+                Buscar cliente existente
               </label>
               <input
+                id="buscar-cliente"
                 className="field"
-                value={nombre}
-                onChange={(e) => setNombre(e.target.value)}
-                required
+                type="search"
+                placeholder="Nombre, apellido o teléfono"
+                value={busquedaCliente}
+                onChange={(e) => {
+                  setBusquedaCliente(e.target.value);
+                  if (clienteId) {
+                    setClienteId("");
+                    setNombre("");
+                    setTelefono("");
+                  }
+                }}
               />
-            </div>
-            <div>
-              <label className="mb-1 block text-xs font-semibold text-slate-500">
-                Teléfono / WhatsApp
-              </label>
-              <input
-                className="field"
-                value={telefono}
-                onChange={(e) => setTelefono(e.target.value)}
-                required
-              />
+              {clienteSeleccionado ? (
+                <div className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-xl bg-violet-50 px-3 py-2 text-sm">
+                  <span>
+                    Cliente seleccionado:{" "}
+                    <strong>
+                      {clienteSeleccionado.nombre} {clienteSeleccionado.apellido}
+                    </strong>{" "}
+                    · {clienteSeleccionado.telefono}
+                  </span>
+                  <button
+                    type="button"
+                    className="text-xs font-semibold text-brand"
+                    onClick={() => {
+                      setClienteId("");
+                      setBusquedaCliente("");
+                      setNombre("");
+                      setTelefono("");
+                    }}
+                  >
+                    Cambiar cliente
+                  </button>
+                </div>
+              ) : (
+                <>
+                  {busquedaCliente.trim() && (
+                    <ul
+                      aria-label="Clientes encontrados"
+                      className="mt-2 max-h-40 space-y-1 overflow-auto rounded-xl border border-slate-200 p-1"
+                    >
+                      {clientesFiltrados.length ? (
+                        clientesFiltrados.map((c) => (
+                          <li key={c.id}>
+                            <button
+                              type="button"
+                              className="w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-slate-50"
+                              onClick={() => {
+                                setClienteId(c.id);
+                                setNombre(`${c.nombre} ${c.apellido}`);
+                                setTelefono(c.telefono);
+                                setBusquedaCliente(`${c.nombre} ${c.apellido}`);
+                              }}
+                            >
+                              <span className="font-semibold">
+                                {c.nombre} {c.apellido}
+                              </span>
+                              <span className="ml-2 text-slate-500">
+                                {c.telefono}
+                              </span>
+                            </button>
+                          </li>
+                        ))
+                      ) : (
+                        <li className="px-3 py-2 text-sm text-slate-500">
+                          No encontramos clientes con esos datos. Podés
+                          registrarlo como nuevo.
+                        </li>
+                      )}
+                    </ul>
+                  )}
+                  <div className="mt-3 grid gap-4 sm:grid-cols-2">
+                    <div>
+                      <label
+                        htmlFor="nombre-cliente"
+                        className="mb-1 block text-xs font-semibold text-slate-500"
+                      >
+                        Nombre y apellido del nuevo cliente
+                      </label>
+                      <input
+                        id="nombre-cliente"
+                        className="field"
+                        value={nombre}
+                        onChange={(e) => setNombre(e.target.value)}
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label
+                        htmlFor="telefono-cliente"
+                        className="mb-1 block text-xs font-semibold text-slate-500"
+                      >
+                        Teléfono / WhatsApp
+                      </label>
+                      <input
+                        id="telefono-cliente"
+                        className="field"
+                        type="tel"
+                        value={telefono}
+                        onChange={(e) => setTelefono(e.target.value)}
+                        required
+                      />
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
             <div>
               <label className="mb-1 block text-xs font-semibold text-slate-500">
