@@ -6,26 +6,28 @@ import { Card, KpiCard } from "@/components/ui/Card";
 import { Plate, StageBadge } from "@/components/ui/badges";
 import { useApp } from "@/lib/store";
 import { useLookups } from "@/lib/lookups";
-import { time } from "@/lib/format";
+import { time, timeWithSeconds } from "@/lib/format";
 import { ApiError, apiConfig, fetchOrdenes, finalizarServicioApi } from "@/lib/api";
-import { estaEnLavado, etapaDeOrden, tieneEtapaIntermedia } from "@/lib/etapas";
+import { estaEnLavado, tieneEtapaIntermedia } from "@/lib/etapas";
+import {
+  armarFilasBackend,
+  armarFilasLocales,
+  contarCola,
+  esperando,
+  idDeFila,
+  type FilaCola,
+  type OrdenesBackend,
+} from "@/lib/cola";
 import {
   fechaHoraReserva,
   obtenerReservaConfirmada,
   priorizarAtencionesEnEspera,
 } from "@/lib/queue-priority";
-import type { Atencion, OrdenColaApi } from "@/lib/types";
 
-type FilaCola =
-  | { tipo: "local"; atencion: Atencion }
-  | { tipo: "backend"; orden: OrdenColaApi; atencion?: Atencion };
-
-/** Las órdenes del backend por estado: en espera (ya priorizadas), en lavado y listas para retirar. */
-interface OrdenesBackend {
-  enEspera: OrdenColaApi[];
-  enLavado: OrdenColaApi[];
-  listas: OrdenColaApi[];
-}
+// Cada cuánto se vuelve a pedir la cola al backend mientras la pestaña está visible. Es la red
+// de seguridad: los cambios hechos desde esta pantalla se reflejan al instante, los que hacen
+// otros operadores u otras pantallas llegan en el próximo sondeo.
+const INTERVALO_SONDEO_MS = 10_000;
 
 export default function ColaPage() {
   const {
@@ -44,6 +46,7 @@ export default function ColaPage() {
   } = useApp();
   const { serviciosDe } = useLookups();
   const [ordenesBackend, setOrdenesBackend] = useState<OrdenesBackend | null>(null);
+  const [actualizadoEl, setActualizadoEl] = useState<string | null>(null);
   const [finalizando, setFinalizando] = useState<string | null>(null);
   const [errorBackend, setErrorBackend] = useState("");
   const [cargandoBackend, setCargandoBackend] = useState(false);
@@ -59,6 +62,9 @@ export default function ColaPage() {
       ),
     [activas, reservas, servicios],
   );
+
+  // Si una consulta falla se conserva lo último que se vio y se avisa: una cola vieja con un
+  // cartel es mejor que una cola vacía que parece real.
   const cargarColaBackend = useCallback(async () => {
     if (apiConfig.USE_MOCK) return;
     if (!lavaderoId) {
@@ -74,25 +80,39 @@ export default function ColaPage() {
         fetchOrdenes(lavaderoId, "LISTO"),
       ]);
       setOrdenesBackend({ enEspera, enLavado, listas });
+      setActualizadoEl(new Date().toISOString());
       setErrorBackend("");
     } catch (error) {
+      // Un ApiError trae el detalle del backend; cualquier otra cosa es que no se pudo llegar
+      // a él (red caída, servidor apagado) y el "Failed to fetch" del navegador no le dice
+      // nada al operador.
       setErrorBackend(
-        error instanceof Error ? error.message : "No se pudo actualizar la cola priorizada.",
+        error instanceof ApiError
+          ? error.message
+          : "No se pudo conectar con el servidor para consultar la cola.",
       );
     } finally {
       setCargandoBackend(false);
     }
   }, [lavaderoId]);
 
+  // HU-13: la cola se mantiene al día sola. Se pide al entrar, cada INTERVALO_SONDEO_MS mientras
+  // la pestaña está visible, y apenas se vuelve a ella (foco o visibilidad): una pestaña oculta
+  // no pide nada y se pone al día en cuanto el operador la mira.
   useEffect(() => {
     if (apiConfig.USE_MOCK) return;
+    const siEstaVisible = () => {
+      if (document.visibilityState === "visible") void cargarColaBackend();
+    };
     const initialTimeoutId = window.setTimeout(() => void cargarColaBackend(), 0);
-    const intervalId = window.setInterval(() => void cargarColaBackend(), 10_000);
-    window.addEventListener("focus", cargarColaBackend);
+    const intervalId = window.setInterval(siEstaVisible, INTERVALO_SONDEO_MS);
+    window.addEventListener("focus", siEstaVisible);
+    document.addEventListener("visibilitychange", siEstaVisible);
     return () => {
       window.clearTimeout(initialTimeoutId);
       window.clearInterval(intervalId);
-      window.removeEventListener("focus", cargarColaBackend);
+      window.removeEventListener("focus", siEstaVisible);
+      document.removeEventListener("visibilitychange", siEstaVisible);
     };
   }, [cargarColaBackend]);
 
@@ -105,7 +125,7 @@ export default function ColaPage() {
       return;
     }
     const { ordenId, patente } = fila.orden;
-    setFinalizando(String(ordenId));
+    setFinalizando(idDeFila(fila));
     try {
       await finalizarServicioApi(ordenId);
       notificar(`Servicio finalizado: ${patente} quedó listo para retirar.`);
@@ -123,77 +143,46 @@ export default function ColaPage() {
     }
   };
 
+  // En modo real la cola es lo que dice el backend y nada más; los datos de demo quedan para el
+  // modo mock. Así la posición de cada vehículo es la que ve cualquier otro operador.
   const filas = useMemo<FilaCola[]>(() => {
     if (apiConfig.USE_MOCK) {
-      return [
-        ...enEsperaLocal.map((atencion) => ({ tipo: "local" as const, atencion })),
-        ...activas
-          .filter((atencion) => atencion.estado !== "EN_ESPERA")
-          .map((atencion) => ({ tipo: "local" as const, atencion })),
-      ];
-    }
-    if (ordenesBackend === null) return [];
-
-    const esperaBackend = ordenesBackend.enEspera.map((orden) => {
-      const vehiculo = vehiculos.find(
-        (item) => item.patente.replace(/\s/g, "").toUpperCase() === orden.patente.replace(/\s/g, "").toUpperCase(),
+      return armarFilasLocales(
+        enEsperaLocal,
+        activas.filter((atencion) => atencion.estado !== "EN_ESPERA"),
       );
-      const atencion = vehiculo
-        ? activas.find(
-            (item) =>
-              item.vehiculoId === vehiculo.id && item.estado === "EN_ESPERA",
-          )
-        : undefined;
-      return { tipo: "backend" as const, orden, atencion };
-    });
-
-    return [
-      ...esperaBackend,
-      ...ordenesBackend.enLavado.map((orden) => ({ tipo: "backend" as const, orden })),
-      ...ordenesBackend.listas.map((orden) => ({ tipo: "backend" as const, orden })),
-      ...activas
-        .filter((atencion) => atencion.estado !== "EN_ESPERA")
-        .map((atencion) => ({ tipo: "local" as const, atencion })),
-    ];
-  }, [activas, ordenesBackend, enEsperaLocal, vehiculos]);
+    }
+    return ordenesBackend ? armarFilasBackend(ordenesBackend) : [];
+  }, [activas, ordenesBackend, enEsperaLocal]);
+  const totales = contarCola(filas);
+  const enEspera = filas.filter(esperando);
+  const esperandoPrimeraCarga = !apiConfig.USE_MOCK && ordenesBackend === null && !errorBackend;
 
   return (
     <div className="space-y-5">
       <div>
         <h1 className="text-2xl font-bold">Cola</h1>
         <p className="text-sm text-slate-500">
-          Visualizá y organizá los vehículos en espera, en proceso y listos.
+          Visualizá y organizá los vehículos en espera, en lavado y listos.
         </p>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <KpiCard
           label="En espera"
-          value={
-            !apiConfig.USE_MOCK && ordenesBackend !== null
-              ? ordenesBackend.enEspera.length
-              : activas.filter((a) => a.estado === "EN_ESPERA").length
-          }
+          value={totales.enEspera}
           tone="purple"
           icon={<Clock className="h-5 w-5" />}
         />
         <KpiCard
           label="En lavado"
-          value={
-            !apiConfig.USE_MOCK && ordenesBackend !== null
-              ? ordenesBackend.enLavado.length
-              : activas.filter((a) => estaEnLavado(a.estado)).length
-          }
+          value={totales.enLavado}
           tone="teal"
           icon={<Droplets className="h-5 w-5" />}
         />
         <KpiCard
           label="Listos para retirar"
-          value={
-            !apiConfig.USE_MOCK && ordenesBackend !== null
-              ? ordenesBackend.listas.length
-              : activas.filter((a) => a.estado === "LISTO").length
-          }
+          value={totales.listos}
           tone="green"
           icon={<Sparkles className="h-5 w-5" />}
         />
@@ -206,12 +195,53 @@ export default function ColaPage() {
       </div>
 
       <div className="grid gap-5 xl:grid-cols-[1.5fr_1fr]">
-        <Card title="Cola de vehículos">
+        <Card
+          title="Cola de vehículos"
+          action={
+            apiConfig.USE_MOCK ? null : (
+              <div className="flex items-center gap-3 text-xs text-slate-400">
+                {cargandoBackend ? (
+                  <span>Actualizando...</span>
+                ) : actualizadoEl ? (
+                  <span>Actualizado {timeWithSeconds(actualizadoEl)}</span>
+                ) : null}
+                <button
+                  type="button"
+                  className="font-semibold text-[#6C5CE7] disabled:text-slate-300"
+                  disabled={cargandoBackend}
+                  onClick={() => void cargarColaBackend()}
+                >
+                  Actualizar
+                </button>
+              </div>
+            )
+          }
+        >
+          {errorBackend && (
+            <p
+              role="alert"
+              className="mb-3 flex items-center gap-2 rounded-xl bg-red-50 px-3 py-2 text-xs text-red-700"
+            >
+              <AlertTriangle className="h-4 w-4 shrink-0" />
+              <span className="flex-1">
+                {errorBackend}
+                {ordenesBackend ? " Se muestra la última cola consultada." : ""}
+              </span>
+              <button
+                type="button"
+                className="font-semibold underline disabled:opacity-50"
+                disabled={cargandoBackend}
+                onClick={() => void cargarColaBackend()}
+              >
+                Reintentar
+              </button>
+            </p>
+          )}
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-slate-100">
                 {[
-                  "Orden",
+                  "Posición",
                   "Origen",
                   "Patente",
                   "Cliente",
@@ -229,10 +259,23 @@ export default function ColaPage() {
               </tr>
             </thead>
             <tbody>
-              {filas.map((fila, i) => {
-                const esBackend = fila.tipo === "backend";
-                const a = fila.atencion;
-                const orden = esBackend ? fila.orden : null;
+              {esperandoPrimeraCarga && (
+                <tr>
+                  <td colSpan={8} className="py-8 text-center text-sm text-slate-400">
+                    Consultando la cola...
+                  </td>
+                </tr>
+              )}
+              {!esperandoPrimeraCarga && filas.length === 0 && (
+                <tr>
+                  <td colSpan={8} className="py-8 text-center text-sm text-slate-500">
+                    La cola está vacía: no hay vehículos esperando.
+                  </td>
+                </tr>
+              )}
+              {filas.map((fila) => {
+                const a = fila.tipo === "local" ? fila.atencion : null;
+                const orden = fila.tipo === "backend" ? fila.orden : null;
                 const v = a
                   ? vehiculos.find((vehiculo) => vehiculo.id === a.vehiculoId)
                   : null;
@@ -251,11 +294,11 @@ export default function ColaPage() {
                     ? new Date(fechaHoraReserva(reservaConfirmada)).toISOString()
                     : null);
                 const ingreso = orden?.ingreso ?? a?.fechaIngreso;
-                const rowId = orden ? String(orden.ordenId) : a?.id ?? `fila-${i}`;
-                const estado = a?.estado ?? (orden ? etapaDeOrden(orden.estado) : "EN_ESPERA");
+                const rowId = idDeFila(fila);
+                const { estado } = fila;
                 return (
                   <tr key={rowId} className="border-b border-slate-50">
-                    <td className="py-3 font-semibold text-slate-400">{i + 1}</td>
+                    <td className="py-3 font-semibold text-slate-400">{fila.posicion ?? "—"}</td>
                     <td>
                       <span
                         className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold ${
@@ -335,7 +378,7 @@ export default function ColaPage() {
                           Confirmar retiro
                         </button>
                       )}
-                      {!a && orden?.estado === "LISTO" && (
+                      {orden?.estado === "LISTO" && (
                         <span className="text-xs text-slate-400">Esperando retiro</span>
                       )}
                     </td>
@@ -346,61 +389,42 @@ export default function ColaPage() {
           </table>
         </Card>
 
-        <Card
-          title="Próximos servicios"
-          action={
-            cargandoBackend ? (
-              <span className="text-xs text-slate-400">Actualizando...</span>
-            ) : null
-          }
-        >
-          {errorBackend && (
-            <p role="alert" className="mb-3 flex items-center gap-2 text-xs text-red-700">
-              <AlertTriangle className="h-4 w-4 shrink-0" />
-              {errorBackend}
-            </p>
-          )}
+        <Card title="Próximos servicios">
           <ul className="space-y-3">
-            {filas
-              .filter((fila) =>
-                fila.tipo === "backend"
-                  ? fila.orden.estado === "EN_ESPERA"
-                  : fila.atencion.estado === "EN_ESPERA",
-              )
-              .map((fila) => {
-                const orden = fila.tipo === "backend" ? fila.orden : null;
-                const a = fila.atencion;
-                const v = a ? vehiculos.find((vehiculo) => vehiculo.id === a.vehiculoId) : null;
-                const reservaConfirmada = a
-                  ? obtenerReservaConfirmada(a, reservas)
-                  : null;
-                const origen =
-                  orden?.tipoIngreso ?? (reservaConfirmada ? "RESERVA" : "ESPONTANEO");
-                const horario =
-                  orden?.horarioReserva ??
-                  (reservaConfirmada
-                    ? new Date(fechaHoraReserva(reservaConfirmada)).toISOString()
-                    : a?.horaEstimadaInicio);
-                return (
-                  <li
-                    key={orden ? `orden-${orden.ordenId}` : a?.id}
-                    className="flex items-center justify-between rounded-xl bg-slate-50 px-3 py-3"
-                  >
-                    <div>
-                      <p className="text-sm font-semibold">
-                        {orden?.modelo ?? `${v?.marca ?? ""} ${v?.modelo ?? ""}`.trim()}
-                      </p>
-                      <p className="text-xs text-slate-500">
-                        {orden?.patente ?? v?.patente} · {origen === "RESERVA" ? "Reserva confirmada" : "Sin turno"}
-                      </p>
-                    </div>
-                    <span className="text-xs font-semibold text-[#6C5CE7]">
-                      {horario ? time(horario) : "En espera"}
-                    </span>
-                  </li>
-                );
-              })}
-            {filas.length === 0 && (
+            {enEspera.map((fila) => {
+              const orden = fila.tipo === "backend" ? fila.orden : null;
+              const a = fila.tipo === "local" ? fila.atencion : null;
+              const v = a ? vehiculos.find((vehiculo) => vehiculo.id === a.vehiculoId) : null;
+              const reservaConfirmada = a
+                ? obtenerReservaConfirmada(a, reservas)
+                : null;
+              const origen =
+                orden?.tipoIngreso ?? (reservaConfirmada ? "RESERVA" : "ESPONTANEO");
+              const horario =
+                orden?.horarioReserva ??
+                (reservaConfirmada
+                  ? new Date(fechaHoraReserva(reservaConfirmada)).toISOString()
+                  : a?.horaEstimadaInicio);
+              return (
+                <li
+                  key={idDeFila(fila)}
+                  className="flex items-center justify-between rounded-xl bg-slate-50 px-3 py-3"
+                >
+                  <div>
+                    <p className="text-sm font-semibold">
+                      {orden?.modelo ?? `${v?.marca ?? ""} ${v?.modelo ?? ""}`.trim()}
+                    </p>
+                    <p className="text-xs text-slate-500">
+                      {orden?.patente ?? v?.patente} · {origen === "RESERVA" ? "Reserva confirmada" : "Sin turno"}
+                    </p>
+                  </div>
+                  <span className="text-xs font-semibold text-[#6C5CE7]">
+                    {horario ? time(horario) : "En espera"}
+                  </span>
+                </li>
+              );
+            })}
+            {!esperandoPrimeraCarga && enEspera.length === 0 && (
               <li className="rounded-xl bg-slate-50 px-3 py-4 text-sm text-slate-500">
                 No hay vehículos esperando.
               </li>
