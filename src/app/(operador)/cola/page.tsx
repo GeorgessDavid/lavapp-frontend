@@ -7,6 +7,7 @@ import { Plate, StageBadge } from "@/components/ui/badges";
 import { useApp } from "@/lib/store";
 import { useLookups } from "@/lib/lookups";
 import { time } from "@/lib/format";
+import { tienePuestoAsignado } from "@/lib/box-assignment";
 import { apiConfig, fetchColaPrioritaria } from "@/lib/api";
 import {
   fechaHoraReserva,
@@ -24,6 +25,7 @@ export default function ColaPage() {
     atenciones,
     boxes,
     avanzar,
+    iniciarLavado,
     asignarBox,
     retirar,
     user,
@@ -203,6 +205,7 @@ export default function ColaPage() {
                 const ingreso = orden?.ingreso ?? a?.fechaIngreso;
                 const rowId = orden ? String(orden.ordenId) : a?.id ?? `fila-${i}`;
                 const estado = a?.estado ?? "EN_ESPERA";
+                const puestoAsignado = a ? tienePuestoAsignado(a, boxes) : false;
                 return (
                   <tr key={rowId} className="border-b border-slate-50">
                     <td className="py-3 font-semibold text-slate-400">{i + 1}</td>
@@ -246,13 +249,29 @@ export default function ColaPage() {
                       <StageBadge estado={estado} />
                     </td>
                     <td className="space-x-2">
-                      {a?.estado === "EN_ESPERA" && libres[0] && (
-                        <button
-                          className="text-xs font-semibold text-[#6C5CE7]"
-                          onClick={() => asignarBox(a.id, libres[0].id)}
-                        >
-                          Asignar puesto
-                        </button>
+                      {a?.estado === "EN_ESPERA" && (
+                        <>
+                          {!puestoAsignado && libres[0] && (
+                            <button
+                              className="text-xs font-semibold text-[#6C5CE7]"
+                              onClick={() => asignarBox(a.id, libres[0].id)}
+                            >
+                              Asignar puesto
+                            </button>
+                          )}
+                          <button
+                            className="text-xs font-semibold text-[#6C5CE7] disabled:cursor-not-allowed disabled:text-slate-400"
+                            disabled={!puestoAsignado}
+                            title={
+                              puestoAsignado
+                                ? "Iniciar el lavado del vehículo asignado"
+                                : "Asigná un puesto al vehículo antes de iniciar el lavado"
+                            }
+                            onClick={() => iniciarLavado(a.id)}
+                          >
+                            Iniciar lavado
+                          </button>
+                        </>
                       )}
                       {a && a.estado !== "EN_ESPERA" && a.estado !== "LISTO" && (
                         <button

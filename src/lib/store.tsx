@@ -39,6 +39,7 @@ import {
   logoutRequest,
   setOnUnauthorized,
 } from "./api";
+import { tienePuestoAsignado } from "./box-assignment";
 
 const STORAGE_KEY = "lavapp_session";
 
@@ -69,6 +70,7 @@ interface AppActions {
     observaciones?: string;
   }) => Atencion;
   avanzar: (atencionId: string) => void;
+  iniciarLavado: (atencionId: string) => boolean;
   asignarBox: (atencionId: string, boxId: string) => void;
   retirar: (atencionId: string) => void;
   crearReserva: (payload: Omit<Reserva, "id" | "estado">) => void;
@@ -224,6 +226,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     };
 
     const avanzar = (atencionId: string) => {
+      const atencion = atenciones.find((item) => item.id === atencionId);
+      if (atencion?.estado === "EN_ESPERA") {
+        setToast("Asigná un puesto antes de iniciar el lavado.");
+        return;
+      }
+
       setAtenciones((prev) =>
         prev.map((a) => {
           if (a.id !== atencionId) return a;
@@ -250,6 +258,25 @@ export function AppProvider({ children }: { children: ReactNode }) {
       );
     };
 
+    const iniciarLavado: AppActions["iniciarLavado"] = (atencionId) => {
+      const atencion = atenciones.find((item) => item.id === atencionId);
+      if (!atencion || atencion.estado !== "EN_ESPERA") {
+        setToast("El vehículo ya no está en espera.");
+        return false;
+      }
+      if (!tienePuestoAsignado(atencion, boxes)) {
+        setToast("Asigná un puesto ocupado por este vehículo antes de iniciar el lavado.");
+        return false;
+      }
+
+      setAtenciones((prev) =>
+        prev.map((item) =>
+          item.id === atencionId ? { ...item, estado: "LAVADO" } : item,
+        ),
+      );
+      return true;
+    };
+
     const asignarBox = (atencionId: string, boxId: string) => {
       setBoxes((prev) =>
         prev.map((b) => {
@@ -263,7 +290,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setAtenciones((prev) =>
         prev.map((a) =>
           a.id === atencionId
-            ? { ...a, boxId, estado: a.estado === "EN_ESPERA" ? "LAVADO" : a.estado }
+            ? { ...a, boxId }
             : a,
         ),
       );
@@ -313,6 +340,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       logout,
       checkIn,
       avanzar,
+      iniciarLavado,
       asignarBox,
       retirar,
       crearReserva,
@@ -332,4 +360,3 @@ export function useApp() {
   if (!ctx) throw new Error("useApp debe usarse dentro de AppProvider");
   return ctx;
 }
-
