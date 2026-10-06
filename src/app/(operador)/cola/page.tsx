@@ -7,7 +7,8 @@ import { Plate, StageBadge } from "@/components/ui/badges";
 import { useApp } from "@/lib/store";
 import { useLookups } from "@/lib/lookups";
 import { time } from "@/lib/format";
-import { apiConfig, fetchColaPrioritaria } from "@/lib/api";
+import { ApiError, apiConfig, fetchOrdenes, finalizarServicioApi } from "@/lib/api";
+import { estaEnLavado, etapaDeOrden, tieneEtapaIntermedia } from "@/lib/etapas";
 import {
   fechaHoraReserva,
   obtenerReservaConfirmada,
@@ -19,6 +20,13 @@ type FilaCola =
   | { tipo: "local"; atencion: Atencion }
   | { tipo: "backend"; orden: OrdenColaApi; atencion?: Atencion };
 
+/** Las órdenes del backend por estado: en espera (ya priorizadas), en lavado y listas para retirar. */
+interface OrdenesBackend {
+  enEspera: OrdenColaApi[];
+  enLavado: OrdenColaApi[];
+  listas: OrdenColaApi[];
+}
+
 export default function ColaPage() {
   const {
     atenciones,
@@ -26,6 +34,8 @@ export default function ColaPage() {
     avanzar,
     asignarBox,
     retirar,
+    finalizarServicio,
+    notificar,
     user,
     servicios,
     vehiculos,
@@ -33,7 +43,8 @@ export default function ColaPage() {
     reservas,
   } = useApp();
   const { serviciosDe } = useLookups();
-  const [colaBackend, setColaBackend] = useState<OrdenColaApi[] | null>(null);
+  const [ordenesBackend, setOrdenesBackend] = useState<OrdenesBackend | null>(null);
+  const [finalizando, setFinalizando] = useState<string | null>(null);
   const [errorBackend, setErrorBackend] = useState("");
   const [cargandoBackend, setCargandoBackend] = useState(false);
   const lavaderoId = user?.lavaderoId;
@@ -57,7 +68,12 @@ export default function ColaPage() {
 
     setCargandoBackend(true);
     try {
-      setColaBackend(await fetchColaPrioritaria(lavaderoId));
+      const [enEspera, enLavado, listas] = await Promise.all([
+        fetchOrdenes(lavaderoId, "EN_ESPERA"),
+        fetchOrdenes(lavaderoId, "EN_PROGRESO"),
+        fetchOrdenes(lavaderoId, "LISTO"),
+      ]);
+      setOrdenesBackend({ enEspera, enLavado, listas });
       setErrorBackend("");
     } catch (error) {
       setErrorBackend(
@@ -79,6 +95,34 @@ export default function ColaPage() {
       window.removeEventListener("focus", cargarColaBackend);
     };
   }, [cargarColaBackend]);
+
+  // HU-34: la acción existe en toda fila activa pero solo se habilita En lavado. Para una orden
+  // del backend llama al endpoint y vuelve a cargar la cola, también tras un error: si otro
+  // operador la finalizó antes (409), la fila tiene que pasar a reflejar el estado real.
+  const finalizar = async (fila: FilaCola) => {
+    if (fila.tipo === "local") {
+      finalizarServicio(fila.atencion.id);
+      return;
+    }
+    const { ordenId, patente } = fila.orden;
+    setFinalizando(String(ordenId));
+    try {
+      await finalizarServicioApi(ordenId);
+      notificar(`Servicio finalizado: ${patente} quedó listo para retirar.`);
+    } catch (error) {
+      notificar(
+        error instanceof ApiError && error.status === 409
+          ? `No se pudo finalizar ${patente}: ya no está en lavado.`
+          : error instanceof Error
+            ? error.message
+            : "No se pudo finalizar el servicio.",
+      );
+    } finally {
+      setFinalizando(null);
+      void cargarColaBackend();
+    }
+  };
+
   const filas = useMemo<FilaCola[]>(() => {
     if (apiConfig.USE_MOCK) {
       return [
@@ -88,9 +132,9 @@ export default function ColaPage() {
           .map((atencion) => ({ tipo: "local" as const, atencion })),
       ];
     }
-    if (colaBackend === null) return [];
+    if (ordenesBackend === null) return [];
 
-    const esperaBackend = colaBackend.map((orden) => {
+    const esperaBackend = ordenesBackend.enEspera.map((orden) => {
       const vehiculo = vehiculos.find(
         (item) => item.patente.replace(/\s/g, "").toUpperCase() === orden.patente.replace(/\s/g, "").toUpperCase(),
       );
@@ -105,11 +149,13 @@ export default function ColaPage() {
 
     return [
       ...esperaBackend,
+      ...ordenesBackend.enLavado.map((orden) => ({ tipo: "backend" as const, orden })),
+      ...ordenesBackend.listas.map((orden) => ({ tipo: "backend" as const, orden })),
       ...activas
         .filter((atencion) => atencion.estado !== "EN_ESPERA")
         .map((atencion) => ({ tipo: "local" as const, atencion })),
     ];
-  }, [activas, colaBackend, enEsperaLocal, vehiculos]);
+  }, [activas, ordenesBackend, enEsperaLocal, vehiculos]);
 
   return (
     <div className="space-y-5">
@@ -124,26 +170,30 @@ export default function ColaPage() {
         <KpiCard
           label="En espera"
           value={
-            !apiConfig.USE_MOCK && colaBackend !== null
-              ? colaBackend.length
+            !apiConfig.USE_MOCK && ordenesBackend !== null
+              ? ordenesBackend.enEspera.length
               : activas.filter((a) => a.estado === "EN_ESPERA").length
           }
           tone="purple"
           icon={<Clock className="h-5 w-5" />}
         />
         <KpiCard
-          label="En proceso"
+          label="En lavado"
           value={
-            activas.filter((a) =>
-              ["LAVADO", "INTERIOR", "TERMINACIONES"].includes(a.estado),
-            ).length
+            !apiConfig.USE_MOCK && ordenesBackend !== null
+              ? ordenesBackend.enLavado.length
+              : activas.filter((a) => estaEnLavado(a.estado)).length
           }
           tone="teal"
           icon={<Droplets className="h-5 w-5" />}
         />
         <KpiCard
           label="Listos para retirar"
-          value={activas.filter((a) => a.estado === "LISTO").length}
+          value={
+            !apiConfig.USE_MOCK && ordenesBackend !== null
+              ? ordenesBackend.listas.length
+              : activas.filter((a) => a.estado === "LISTO").length
+          }
           tone="green"
           icon={<Sparkles className="h-5 w-5" />}
         />
@@ -202,7 +252,7 @@ export default function ColaPage() {
                     : null);
                 const ingreso = orden?.ingreso ?? a?.fechaIngreso;
                 const rowId = orden ? String(orden.ordenId) : a?.id ?? `fila-${i}`;
-                const estado = a?.estado ?? "EN_ESPERA";
+                const estado = a?.estado ?? (orden ? etapaDeOrden(orden.estado) : "EN_ESPERA");
                 return (
                   <tr key={rowId} className="border-b border-slate-50">
                     <td className="py-3 font-semibold text-slate-400">{i + 1}</td>
@@ -254,12 +304,27 @@ export default function ColaPage() {
                           Asignar puesto
                         </button>
                       )}
-                      {a && a.estado !== "EN_ESPERA" && a.estado !== "LISTO" && (
+                      {a && tieneEtapaIntermedia(a.estado) && (
                         <button
                           className="text-xs font-semibold text-[#6C5CE7]"
                           onClick={() => avanzar(a.id)}
                         >
                           Siguiente etapa
+                        </button>
+                      )}
+                      {estado !== "LISTO" && estado !== "RETIRADO" && (
+                        <button
+                          type="button"
+                          className="text-xs font-semibold text-emerald-600 disabled:cursor-not-allowed disabled:text-slate-300"
+                          disabled={!estaEnLavado(estado) || finalizando === rowId}
+                          title={
+                            estaEnLavado(estado)
+                              ? "Marca el lavado como terminado: el vehículo queda listo para retirar"
+                              : "Solo se puede finalizar un vehículo que está en lavado"
+                          }
+                          onClick={() => void finalizar(fila)}
+                        >
+                          {finalizando === rowId ? "Finalizando..." : "Finalizar servicio"}
                         </button>
                       )}
                       {a?.estado === "LISTO" && (
@@ -269,6 +334,9 @@ export default function ColaPage() {
                         >
                           Confirmar retiro
                         </button>
+                      )}
+                      {!a && orden?.estado === "LISTO" && (
+                        <span className="text-xs text-slate-400">Esperando retiro</span>
                       )}
                     </td>
                   </tr>
@@ -294,7 +362,11 @@ export default function ColaPage() {
           )}
           <ul className="space-y-3">
             {filas
-              .filter((fila) => fila.tipo === "backend" || fila.atencion.estado === "EN_ESPERA")
+              .filter((fila) =>
+                fila.tipo === "backend"
+                  ? fila.orden.estado === "EN_ESPERA"
+                  : fila.atencion.estado === "EN_ESPERA",
+              )
               .map((fila) => {
                 const orden = fila.tipo === "backend" ? fila.orden : null;
                 const a = fila.atencion;

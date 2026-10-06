@@ -2,7 +2,7 @@ import type { ServiceStage } from "./types";
 
 export const stageLabel: Record<ServiceStage, string> = {
   EN_ESPERA: "En espera",
-  LAVADO: "Lavado",
+  LAVADO: "En lavado",
   INTERIOR: "Interior",
   TERMINACIONES: "Terminaciones",
   LISTO: "Listo para retirar",
