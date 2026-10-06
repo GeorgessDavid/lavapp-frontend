@@ -14,6 +14,8 @@ export default function IngresosPage() {
   const lavaderoId = user?.lavaderoId ?? Number(process.env.NEXT_PUBLIC_LAVADERO_ID ?? "1");
   const { cliente, vehiculo, serviciosDe } = useLookups();
   const [patente, setPatente] = useState("");
+  const [clienteSeleccionadoId, setClienteSeleccionadoId] = useState("");
+  const [vehiculoSeleccionadoId, setVehiculoSeleccionadoId] = useState("");
   const found = useMemo(() => {
     const v = vehiculos.find(
       (x) =>
@@ -31,6 +33,55 @@ export default function IngresosPage() {
   const [servicioId, setServicioId] = useState(servicios[1]?.id ?? "s2");
   const [obs, setObs] = useState("");
 
+  function onClienteSeleccionado(clienteId: string) {
+    setClienteSeleccionadoId(clienteId);
+    const seleccionado = clientes.find((item) => item.id === clienteId);
+
+    if (vehiculoSeleccionadoId) {
+      const vehiculoActual = vehiculos.find(
+        (item) => item.id === vehiculoSeleccionadoId,
+      );
+      if (vehiculoActual?.clienteId !== clienteId) {
+        setVehiculoSeleccionadoId("");
+        setPatente("");
+        setMarca("");
+        setModelo("");
+      }
+    }
+
+    setNombre(
+      seleccionado
+        ? `${seleccionado.nombre} ${seleccionado.apellido}`.trim()
+        : "",
+    );
+    setTelefono(seleccionado?.telefono ?? "");
+  }
+
+  function onVehiculoSeleccionado(vehiculoId: string) {
+    setVehiculoSeleccionadoId(vehiculoId);
+    const seleccionado = vehiculos.find((item) => item.id === vehiculoId);
+    if (!seleccionado) {
+      setPatente("");
+      setMarca("");
+      setModelo("");
+      return;
+    }
+
+    const propietario = clientes.find(
+      (item) => item.id === seleccionado.clienteId,
+    );
+    setClienteSeleccionadoId(propietario?.id ?? "");
+    setNombre(
+      propietario
+        ? `${propietario.nombre} ${propietario.apellido}`.trim()
+        : "",
+    );
+    setTelefono(propietario?.telefono ?? "");
+    setPatente(seleccionado.patente);
+    setMarca(seleccionado.marca);
+    setModelo(seleccionado.modelo);
+  }
+
   function onPatente(value: string) {
     setPatente(value);
     const v = vehiculos.find(
@@ -40,10 +91,19 @@ export default function IngresosPage() {
     );
     if (v) {
       const c = clientes.find((cli) => cli.id === v.clienteId);
+      setVehiculoSeleccionadoId(v.id);
+      setClienteSeleccionadoId(c?.id ?? "");
       setNombre(`${c?.nombre ?? ""} ${c?.apellido ?? ""}`.trim());
       setTelefono(c?.telefono ?? "");
       setMarca(v.marca);
       setModelo(v.modelo);
+    } else if (vehiculoSeleccionadoId) {
+      setVehiculoSeleccionadoId("");
+      setClienteSeleccionadoId("");
+      setNombre("");
+      setTelefono("");
+      setMarca("");
+      setModelo("");
     }
   }
 
@@ -59,6 +119,8 @@ export default function IngresosPage() {
       observaciones: obs,
     });
     setPatente("");
+    setClienteSeleccionadoId("");
+    setVehiculoSeleccionadoId("");
     setNombre("");
     setTelefono("");
     setMarca("");
@@ -116,11 +178,70 @@ export default function IngresosPage() {
       <div className="grid gap-5 xl:grid-cols-[1.2fr_0.8fr]">
         <Card title="Ingreso sin reserva">
           <form onSubmit={onSubmit} className="grid gap-4 sm:grid-cols-2">
+            <div className="grid gap-4 rounded-2xl bg-slate-50 p-4 sm:col-span-2 sm:grid-cols-2">
+              <div>
+                <label
+                  htmlFor="cliente-registrado"
+                  className="mb-1 block text-xs font-semibold text-slate-500"
+                >
+                  Cliente registrado (opcional)
+                </label>
+                <select
+                  id="cliente-registrado"
+                  className="field bg-white"
+                  value={clienteSeleccionadoId}
+                  onChange={(e) => onClienteSeleccionado(e.target.value)}
+                >
+                  <option value="">Cargar cliente nuevo</option>
+                  {clientes
+                    .filter((item) => !item.inactivo)
+                    .map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {item.nombre} {item.apellido} · {item.telefono}
+                      </option>
+                    ))}
+                </select>
+              </div>
+              <div>
+                <label
+                  htmlFor="vehiculo-registrado"
+                  className="mb-1 block text-xs font-semibold text-slate-500"
+                >
+                  Vehículo registrado (opcional)
+                </label>
+                <select
+                  id="vehiculo-registrado"
+                  className="field bg-white"
+                  value={vehiculoSeleccionadoId}
+                  onChange={(e) => onVehiculoSeleccionado(e.target.value)}
+                >
+                  <option value="">Cargar vehículo nuevo</option>
+                  {vehiculos.map((item) => {
+                    const propietario = clientes.find(
+                      (clienteActual) => clienteActual.id === item.clienteId,
+                    );
+                    return (
+                      <option key={item.id} value={item.id}>
+                        {item.patente} · {item.marca} {item.modelo}
+                        {propietario
+                          ? ` · ${propietario.nombre} ${propietario.apellido}`
+                          : ""}
+                      </option>
+                    );
+                  })}
+                </select>
+              </div>
+              <p className="text-xs text-slate-500 sm:col-span-2">
+                Al elegir un registro se completan sus datos. También podés
+                ingresar la patente para recuperar un vehículo existente.
+              </p>
+            </div>
             <div className="sm:col-span-2">
-              <label className="mb-1 block text-xs font-semibold text-slate-500">
+              <label htmlFor="patente-ingreso" className="mb-1 block text-xs font-semibold text-slate-500">
                 Patente
               </label>
               <input
+                id="patente-ingreso"
                 className="field"
                 placeholder="AB 123 CD"
                 value={patente}
@@ -135,32 +256,41 @@ export default function IngresosPage() {
               )}
             </div>
             <div>
-              <label className="mb-1 block text-xs font-semibold text-slate-500">
+              <label htmlFor="cliente-ingreso" className="mb-1 block text-xs font-semibold text-slate-500">
                 Cliente
               </label>
               <input
+                id="cliente-ingreso"
                 className="field"
                 value={nombre}
-                onChange={(e) => setNombre(e.target.value)}
+                onChange={(e) => {
+                  setNombre(e.target.value);
+                  setClienteSeleccionadoId("");
+                }}
                 required
               />
             </div>
             <div>
-              <label className="mb-1 block text-xs font-semibold text-slate-500">
+              <label htmlFor="telefono-ingreso" className="mb-1 block text-xs font-semibold text-slate-500">
                 Teléfono / WhatsApp
               </label>
               <input
+                id="telefono-ingreso"
                 className="field"
                 value={telefono}
-                onChange={(e) => setTelefono(e.target.value)}
+                onChange={(e) => {
+                  setTelefono(e.target.value);
+                  setClienteSeleccionadoId("");
+                }}
                 required
               />
             </div>
             <div>
-              <label className="mb-1 block text-xs font-semibold text-slate-500">
+              <label htmlFor="marca-ingreso" className="mb-1 block text-xs font-semibold text-slate-500">
                 Marca
               </label>
               <input
+                id="marca-ingreso"
                 className="field"
                 value={marca}
                 onChange={(e) => setMarca(e.target.value)}
@@ -168,10 +298,11 @@ export default function IngresosPage() {
               />
             </div>
             <div>
-              <label className="mb-1 block text-xs font-semibold text-slate-500">
+              <label htmlFor="modelo-ingreso" className="mb-1 block text-xs font-semibold text-slate-500">
                 Modelo
               </label>
               <input
+                id="modelo-ingreso"
                 className="field"
                 value={modelo}
                 onChange={(e) => setModelo(e.target.value)}
@@ -179,10 +310,11 @@ export default function IngresosPage() {
               />
             </div>
             <div className="sm:col-span-2">
-              <label className="mb-1 block text-xs font-semibold text-slate-500">
+              <label htmlFor="servicio-ingreso" className="mb-1 block text-xs font-semibold text-slate-500">
                 Servicio
               </label>
               <select
+                id="servicio-ingreso"
                 className="field"
                 value={servicioId}
                 onChange={(e) => setServicioId(e.target.value)}
@@ -193,12 +325,20 @@ export default function IngresosPage() {
                   </option>
                 ))}
               </select>
+              {servicios.find((item) => item.id === servicioId) && (
+                <p className="mt-1 text-xs text-slate-500">
+                  {servicios.find((item) => item.id === servicioId)?.descripcion}
+                  {" · "}
+                  ${servicios.find((item) => item.id === servicioId)?.precio.toLocaleString("es-AR")}
+                </p>
+              )}
             </div>
             <div className="sm:col-span-2">
-              <label className="mb-1 block text-xs font-semibold text-slate-500">
+              <label htmlFor="observaciones-ingreso" className="mb-1 block text-xs font-semibold text-slate-500">
                 Observaciones / evidencia
               </label>
               <textarea
+                id="observaciones-ingreso"
                 className="field min-h-20"
                 value={obs}
                 onChange={(e) => setObs(e.target.value)}
