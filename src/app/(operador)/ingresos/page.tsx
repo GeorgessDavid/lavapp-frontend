@@ -9,6 +9,16 @@ import { useLookups } from "@/lib/lookups";
 import { time } from "@/lib/format";
 import { LlegadaConReserva } from "@/components/LlegadaConReserva";
 
+type CampoIngreso =
+  | "patente"
+  | "nombre"
+  | "telefono"
+  | "marca"
+  | "modelo"
+  | "servicioId";
+
+type ErroresIngreso = Partial<Record<CampoIngreso, string>>;
+
 export default function IngresosPage() {
   const { atenciones, vehiculos, clientes, servicios, boxes, checkIn, user } = useApp();
   const lavaderoId = user?.lavaderoId ?? Number(process.env.NEXT_PUBLIC_LAVADERO_ID ?? "1");
@@ -28,8 +38,22 @@ export default function IngresosPage() {
   const [telefono, setTelefono] = useState("");
   const [marca, setMarca] = useState("");
   const [modelo, setModelo] = useState("");
-  const [servicioId, setServicioId] = useState(servicios[1]?.id ?? "s2");
+  const [servicioId, setServicioId] = useState("");
   const [obs, setObs] = useState("");
+  const [errores, setErrores] = useState<ErroresIngreso>({});
+  const [errorEnvio, setErrorEnvio] = useState("");
+  const [exito, setExito] = useState("");
+
+  function limpiarMensajeCampo(campo: CampoIngreso) {
+    setErrores((actuales) => {
+      if (!(campo in actuales)) return actuales;
+      const siguientes = { ...actuales };
+      delete siguientes[campo];
+      return siguientes;
+    });
+    setErrorEnvio("");
+    setExito("");
+  }
 
   function onPatente(value: string) {
     setPatente(value);
@@ -44,26 +68,75 @@ export default function IngresosPage() {
       setTelefono(c?.telefono ?? "");
       setMarca(v.marca);
       setModelo(v.modelo);
+      limpiarMensajeCampo("nombre");
+      limpiarMensajeCampo("telefono");
+      limpiarMensajeCampo("marca");
+      limpiarMensajeCampo("modelo");
     }
   }
 
   function onSubmit(e: FormEvent) {
     e.preventDefault();
-    checkIn({
-      patente,
-      clienteNombre: nombre,
-      telefono,
-      marca,
-      modelo,
-      servicioId,
-      observaciones: obs,
-    });
-    setPatente("");
-    setNombre("");
-    setTelefono("");
-    setMarca("");
-    setModelo("");
-    setObs("");
+    setExito("");
+    setErrorEnvio("");
+
+    const patenteNormalizada = patente.trim().toUpperCase();
+    const patenteCompacta = patenteNormalizada.replace(/\s/g, "");
+    const digitosTelefono = telefono.replace(/\D/g, "");
+    const nuevosErrores: ErroresIngreso = {};
+
+    if (!patenteNormalizada) {
+      nuevosErrores.patente = "Ingresá la patente del vehículo.";
+    } else if (!/^(?:[A-Z]{2}\d{3}[A-Z]{2}|[A-Z]{3}\d{3})$/.test(patenteCompacta)) {
+      nuevosErrores.patente =
+        "Ingresá una patente válida (por ejemplo, AB 123 CD o ABC 123).";
+    }
+    if (!nombre.trim()) {
+      nuevosErrores.nombre = "Ingresá el nombre del cliente.";
+    }
+    if (!telefono.trim()) {
+      nuevosErrores.telefono = "Ingresá el teléfono de contacto.";
+    } else if (!/^\+?[\d\s().-]+$/.test(telefono.trim()) || digitosTelefono.length < 8 || digitosTelefono.length > 15) {
+      nuevosErrores.telefono = "Ingresá un teléfono válido con entre 8 y 15 dígitos.";
+    }
+    if (!marca.trim()) {
+      nuevosErrores.marca = "Ingresá la marca del vehículo.";
+    }
+    if (!modelo.trim()) {
+      nuevosErrores.modelo = "Ingresá el modelo del vehículo.";
+    }
+    if (!servicioId || !servicios.some((servicio) => servicio.id === servicioId)) {
+      nuevosErrores.servicioId = "Seleccioná un servicio válido.";
+    }
+
+    setErrores(nuevosErrores);
+    if (Object.keys(nuevosErrores).length > 0) return;
+
+    try {
+      checkIn({
+        patente: patenteNormalizada,
+        clienteNombre: nombre.trim(),
+        telefono: telefono.trim(),
+        marca: marca.trim(),
+        modelo: modelo.trim(),
+        servicioId,
+        observaciones: obs,
+      });
+      setExito(`Ingreso registrado correctamente para ${patenteNormalizada}.`);
+      setPatente("");
+      setNombre("");
+      setTelefono("");
+      setMarca("");
+      setModelo("");
+      setServicioId("");
+      setObs("");
+    } catch (error) {
+      setErrorEnvio(
+        error instanceof Error
+          ? error.message
+          : "No se pudo registrar el ingreso. Revisá los datos e intentá nuevamente.",
+      );
+    }
   }
 
   const ocupacion = Math.round(
@@ -115,18 +188,41 @@ export default function IngresosPage() {
 
       <div className="grid gap-5 xl:grid-cols-[1.2fr_0.8fr]">
         <Card title="Ingreso sin reserva">
-          <form onSubmit={onSubmit} className="grid gap-4 sm:grid-cols-2">
+          <form noValidate onSubmit={onSubmit} className="grid gap-4 sm:grid-cols-2">
+            {(Object.keys(errores).length > 0 || errorEnvio) && (
+              <p
+                role="alert"
+                className="sm:col-span-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
+              >
+                {errorEnvio || "Revisá los campos indicados antes de confirmar el ingreso."}
+              </p>
+            )}
+            {exito && (
+              <p
+                role="status"
+                className="sm:col-span-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700"
+              >
+                {exito}
+              </p>
+            )}
             <div className="sm:col-span-2">
-              <label className="mb-1 block text-xs font-semibold text-slate-500">
+              <label htmlFor="patente-ingreso" className="mb-1 block text-xs font-semibold text-slate-500">
                 Patente
               </label>
               <input
+                id="patente-ingreso"
                 className="field"
                 placeholder="AB 123 CD"
                 value={patente}
-                onChange={(e) => onPatente(e.target.value)}
+                onChange={(e) => {
+                  onPatente(e.target.value);
+                  limpiarMensajeCampo("patente");
+                }}
+                aria-invalid={Boolean(errores.patente)}
+                aria-describedby={errores.patente ? "patente-error" : undefined}
                 required
               />
+              {errores.patente && <p id="patente-error" className="mt-1 text-xs text-red-700">{errores.patente}</p>}
               {found && (
                 <p className="mt-1 text-xs text-emerald-600">
                   Cliente frecuente encontrado. Se recuperó historial y datos del
@@ -135,64 +231,102 @@ export default function IngresosPage() {
               )}
             </div>
             <div>
-              <label className="mb-1 block text-xs font-semibold text-slate-500">
+              <label htmlFor="cliente-ingreso" className="mb-1 block text-xs font-semibold text-slate-500">
                 Cliente
               </label>
               <input
+                id="cliente-ingreso"
                 className="field"
                 value={nombre}
-                onChange={(e) => setNombre(e.target.value)}
+                onChange={(e) => {
+                  setNombre(e.target.value);
+                  limpiarMensajeCampo("nombre");
+                }}
+                aria-invalid={Boolean(errores.nombre)}
+                aria-describedby={errores.nombre ? "cliente-error" : undefined}
                 required
               />
+              {errores.nombre && <p id="cliente-error" className="mt-1 text-xs text-red-700">{errores.nombre}</p>}
             </div>
             <div>
-              <label className="mb-1 block text-xs font-semibold text-slate-500">
+              <label htmlFor="telefono-ingreso" className="mb-1 block text-xs font-semibold text-slate-500">
                 Teléfono / WhatsApp
               </label>
               <input
+                id="telefono-ingreso"
                 className="field"
+                type="tel"
                 value={telefono}
-                onChange={(e) => setTelefono(e.target.value)}
+                onChange={(e) => {
+                  setTelefono(e.target.value);
+                  limpiarMensajeCampo("telefono");
+                }}
+                aria-invalid={Boolean(errores.telefono)}
+                aria-describedby={errores.telefono ? "telefono-error" : undefined}
                 required
               />
+              {errores.telefono && <p id="telefono-error" className="mt-1 text-xs text-red-700">{errores.telefono}</p>}
             </div>
             <div>
-              <label className="mb-1 block text-xs font-semibold text-slate-500">
+              <label htmlFor="marca-ingreso" className="mb-1 block text-xs font-semibold text-slate-500">
                 Marca
               </label>
               <input
+                id="marca-ingreso"
                 className="field"
                 value={marca}
-                onChange={(e) => setMarca(e.target.value)}
+                onChange={(e) => {
+                  setMarca(e.target.value);
+                  limpiarMensajeCampo("marca");
+                }}
+                aria-invalid={Boolean(errores.marca)}
+                aria-describedby={errores.marca ? "marca-error" : undefined}
                 required
               />
+              {errores.marca && <p id="marca-error" className="mt-1 text-xs text-red-700">{errores.marca}</p>}
             </div>
             <div>
-              <label className="mb-1 block text-xs font-semibold text-slate-500">
+              <label htmlFor="modelo-ingreso" className="mb-1 block text-xs font-semibold text-slate-500">
                 Modelo
               </label>
               <input
+                id="modelo-ingreso"
                 className="field"
                 value={modelo}
-                onChange={(e) => setModelo(e.target.value)}
+                onChange={(e) => {
+                  setModelo(e.target.value);
+                  limpiarMensajeCampo("modelo");
+                }}
+                aria-invalid={Boolean(errores.modelo)}
+                aria-describedby={errores.modelo ? "modelo-error" : undefined}
                 required
               />
+              {errores.modelo && <p id="modelo-error" className="mt-1 text-xs text-red-700">{errores.modelo}</p>}
             </div>
             <div className="sm:col-span-2">
-              <label className="mb-1 block text-xs font-semibold text-slate-500">
+              <label htmlFor="servicio-ingreso" className="mb-1 block text-xs font-semibold text-slate-500">
                 Servicio
               </label>
               <select
+                id="servicio-ingreso"
                 className="field"
                 value={servicioId}
-                onChange={(e) => setServicioId(e.target.value)}
+                onChange={(e) => {
+                  setServicioId(e.target.value);
+                  limpiarMensajeCampo("servicioId");
+                }}
+                aria-invalid={Boolean(errores.servicioId)}
+                aria-describedby={errores.servicioId ? "servicio-error" : undefined}
+                required
               >
+                <option value="">Seleccionar servicio</option>
                 {servicios.map((s) => (
                   <option key={s.id} value={s.id}>
                     {s.nombre} · {s.duracionMin} min
                   </option>
                 ))}
               </select>
+              {errores.servicioId && <p id="servicio-error" className="mt-1 text-xs text-red-700">{errores.servicioId}</p>}
             </div>
             <div className="sm:col-span-2">
               <label className="mb-1 block text-xs font-semibold text-slate-500">
