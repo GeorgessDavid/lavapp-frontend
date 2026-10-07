@@ -16,6 +16,7 @@ export default function IngresosPage() {
   const [patente, setPatente] = useState("");
   const [clienteId, setClienteId] = useState("");
   const [busquedaCliente, setBusquedaCliente] = useState("");
+  const [vehiculoSeleccionadoId, setVehiculoSeleccionadoId] = useState("");
   const found = useMemo(() => {
     const v = vehiculos.find(
       (x) =>
@@ -46,6 +47,65 @@ export default function IngresosPage() {
   const [obs, setObs] = useState("");
   const servicioSeleccionado = servicios.find((servicio) => servicio.id === servicioId);
 
+  function onClienteSeleccionado(clienteId: string) {
+    setClienteId(clienteId);
+    const seleccionado = clientes.find((item) => item.id === clienteId);
+    setBusquedaCliente(
+      seleccionado
+        ? `${seleccionado.nombre} ${seleccionado.apellido}`.trim()
+        : "",
+    );
+
+    if (vehiculoSeleccionadoId) {
+      const vehiculoActual = vehiculos.find(
+        (item) => item.id === vehiculoSeleccionadoId,
+      );
+      if (vehiculoActual?.clienteId !== clienteId) {
+        setVehiculoSeleccionadoId("");
+        setPatente("");
+        setMarca("");
+        setModelo("");
+      }
+    }
+
+    setNombre(
+      seleccionado
+        ? `${seleccionado.nombre} ${seleccionado.apellido}`.trim()
+        : "",
+    );
+    setTelefono(seleccionado?.telefono ?? "");
+  }
+
+  function onVehiculoSeleccionado(vehiculoId: string) {
+    setVehiculoSeleccionadoId(vehiculoId);
+    const seleccionado = vehiculos.find((item) => item.id === vehiculoId);
+    if (!seleccionado) {
+      setPatente("");
+      setMarca("");
+      setModelo("");
+      return;
+    }
+
+    const propietario = clientes.find(
+      (item) => item.id === seleccionado.clienteId,
+    );
+    setClienteId(propietario?.id ?? "");
+    setBusquedaCliente(
+      propietario
+        ? `${propietario.nombre} ${propietario.apellido}`.trim()
+        : "",
+    );
+    setNombre(
+      propietario
+        ? `${propietario.nombre} ${propietario.apellido}`.trim()
+        : "",
+    );
+    setTelefono(propietario?.telefono ?? "");
+    setPatente(seleccionado.patente);
+    setMarca(seleccionado.marca);
+    setModelo(seleccionado.modelo);
+  }
+
   function onPatente(value: string) {
     setPatente(value);
     const v = vehiculos.find(
@@ -55,12 +115,21 @@ export default function IngresosPage() {
     );
     if (v) {
       const c = clientes.find((cli) => cli.id === v.clienteId);
+      setVehiculoSeleccionadoId(v.id);
       setClienteId(c?.id ?? "");
       setBusquedaCliente(c ? `${c.nombre} ${c.apellido}` : "");
       setNombre(`${c?.nombre ?? ""} ${c?.apellido ?? ""}`.trim());
       setTelefono(c?.telefono ?? "");
       setMarca(v.marca);
       setModelo(v.modelo);
+    } else if (vehiculoSeleccionadoId) {
+      setVehiculoSeleccionadoId("");
+      setClienteId("");
+      setBusquedaCliente("");
+      setNombre("");
+      setTelefono("");
+      setMarca("");
+      setModelo("");
     }
   }
 
@@ -79,6 +148,7 @@ export default function IngresosPage() {
     setPatente("");
     setClienteId("");
     setBusquedaCliente("");
+    setVehiculoSeleccionadoId("");
     setNombre("");
     setTelefono("");
     setMarca("");
@@ -137,11 +207,47 @@ export default function IngresosPage() {
       <div className="grid gap-5 xl:grid-cols-[1.2fr_0.8fr]">
         <Card title="Ingreso sin reserva">
           <form onSubmit={onSubmit} className="grid gap-4 sm:grid-cols-2">
+            <div className="grid gap-4 rounded-2xl bg-slate-50 p-4 sm:col-span-2">
+              <div>
+                <label
+                  htmlFor="vehiculo-registrado"
+                  className="mb-1 block text-xs font-semibold text-slate-500"
+                >
+                  Vehículo registrado (opcional)
+                </label>
+                <select
+                  id="vehiculo-registrado"
+                  className="field bg-white"
+                  value={vehiculoSeleccionadoId}
+                  onChange={(e) => onVehiculoSeleccionado(e.target.value)}
+                >
+                  <option value="">Cargar vehículo nuevo</option>
+                  {vehiculos.map((item) => {
+                    const propietario = clientes.find(
+                      (clienteActual) => clienteActual.id === item.clienteId,
+                    );
+                    return (
+                      <option key={item.id} value={item.id}>
+                        {item.patente} · {item.marca} {item.modelo}
+                        {propietario
+                          ? ` · ${propietario.nombre} ${propietario.apellido}`
+                          : ""}
+                      </option>
+                    );
+                  })}
+                </select>
+              </div>
+              <p className="text-xs text-slate-500">
+                Al elegir un vehículo registrado se completan sus datos. También
+                podés ingresar la patente para recuperarlo.
+              </p>
+            </div>
             <div className="sm:col-span-2">
-              <label className="mb-1 block text-xs font-semibold text-slate-500">
+              <label htmlFor="patente-ingreso" className="mb-1 block text-xs font-semibold text-slate-500">
                 Patente
               </label>
               <input
+                id="patente-ingreso"
                 className="field"
                 placeholder="AB 123 CD"
                 value={patente}
@@ -172,6 +278,10 @@ export default function IngresosPage() {
                   setBusquedaCliente(e.target.value);
                   if (clienteId) {
                     setClienteId("");
+                    setVehiculoSeleccionadoId("");
+                    setPatente("");
+                    setMarca("");
+                    setModelo("");
                     setNombre("");
                     setTelefono("");
                   }
@@ -192,8 +302,12 @@ export default function IngresosPage() {
                     onClick={() => {
                       setClienteId("");
                       setBusquedaCliente("");
+                      setVehiculoSeleccionadoId("");
                       setNombre("");
                       setTelefono("");
+                      setPatente("");
+                      setMarca("");
+                      setModelo("");
                     }}
                   >
                     Cambiar cliente
@@ -213,10 +327,7 @@ export default function IngresosPage() {
                               type="button"
                               className="w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-slate-50"
                               onClick={() => {
-                                setClienteId(c.id);
-                                setNombre(`${c.nombre} ${c.apellido}`);
-                                setTelefono(c.telefono);
-                                setBusquedaCliente(`${c.nombre} ${c.apellido}`);
+                                onClienteSeleccionado(c.id);
                               }}
                             >
                               <span className="font-semibold">
@@ -273,10 +384,11 @@ export default function IngresosPage() {
               )}
             </div>
             <div>
-              <label className="mb-1 block text-xs font-semibold text-slate-500">
+              <label htmlFor="marca-ingreso" className="mb-1 block text-xs font-semibold text-slate-500">
                 Marca
               </label>
               <input
+                id="marca-ingreso"
                 className="field"
                 value={marca}
                 onChange={(e) => setMarca(e.target.value)}
@@ -284,10 +396,11 @@ export default function IngresosPage() {
               />
             </div>
             <div>
-              <label className="mb-1 block text-xs font-semibold text-slate-500">
+              <label htmlFor="modelo-ingreso" className="mb-1 block text-xs font-semibold text-slate-500">
                 Modelo
               </label>
               <input
+                id="modelo-ingreso"
                 className="field"
                 value={modelo}
                 onChange={(e) => setModelo(e.target.value)}
@@ -295,10 +408,11 @@ export default function IngresosPage() {
               />
             </div>
             <div className="sm:col-span-2">
-              <label className="mb-1 block text-xs font-semibold text-slate-500">
+              <label htmlFor="servicio-ingreso" className="mb-1 block text-xs font-semibold text-slate-500">
                 Servicio
               </label>
               <select
+                id="servicio-ingreso"
                 className="field"
                 value={servicioId}
                 onChange={(e) => setServicioId(e.target.value)}
@@ -327,10 +441,11 @@ export default function IngresosPage() {
               )}
             </div>
             <div className="sm:col-span-2">
-              <label className="mb-1 block text-xs font-semibold text-slate-500">
+              <label htmlFor="observaciones-ingreso" className="mb-1 block text-xs font-semibold text-slate-500">
                 Observaciones / evidencia
               </label>
               <textarea
+                id="observaciones-ingreso"
                 className="field min-h-20"
                 value={obs}
                 onChange={(e) => setObs(e.target.value)}
