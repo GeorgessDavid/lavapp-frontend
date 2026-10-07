@@ -63,6 +63,7 @@ interface AppActions {
   checkIn: (payload: {
     patente: string;
     clienteId?: string;
+    vehiculoId?: string;
     clienteNombre: string;
     telefono: string;
     marca: string;
@@ -162,16 +163,33 @@ export function AppProvider({ children }: { children: ReactNode }) {
     };
 
     const checkIn: AppActions["checkIn"] = (payload) => {
+      let vehiculo = payload.vehiculoId
+        ? vehiculos.find((v) => v.id === payload.vehiculoId)
+        : vehiculos.find(
+            (v) =>
+              v.patente.replace(/\s/g, "").toUpperCase() ===
+              payload.patente.replace(/\s/g, "").toUpperCase(),
+          );
+      if (payload.vehiculoId && !vehiculo) {
+        throw new Error("El vehículo seleccionado ya no está disponible.");
+      }
+
       let cliente = payload.clienteId
         ? clientes.find((c) => c.id === payload.clienteId)
-        : clientes.find(
-            (c) =>
-              `${c.nombre} ${c.apellido}`.toLowerCase() ===
-              payload.clienteNombre.toLowerCase(),
-          );
+        : vehiculo
+          ? clientes.find((c) => c.id === vehiculo!.clienteId)
+          : clientes.find(
+              (c) =>
+                `${c.nombre} ${c.apellido}`.toLowerCase() ===
+                payload.clienteNombre.toLowerCase(),
+            );
       if (payload.clienteId && !cliente) {
         throw new Error("El cliente seleccionado ya no está disponible.");
       }
+      if (vehiculo && cliente?.id !== vehiculo.clienteId) {
+        throw new Error("El vehículo no pertenece al cliente seleccionado.");
+      }
+
       if (!cliente) {
         const [nombre, ...rest] = payload.clienteNombre.split(" ");
         cliente = {
@@ -188,15 +206,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setClientes((prev) => [...prev, cliente!]);
       }
 
-      let vehiculo = vehiculos.find(
-        (v) =>
-          v.patente.replace(/\s/g, "").toUpperCase() ===
-          payload.patente.replace(/\s/g, "").toUpperCase(),
-      );
       if (!vehiculo) {
         vehiculo = {
           id: `v${Date.now()}`,
-          patente: payload.patente.toUpperCase(),
+          patente: payload.patente.trim().toUpperCase(),
           marca: payload.marca,
           modelo: payload.modelo,
           tipo: "Auto",

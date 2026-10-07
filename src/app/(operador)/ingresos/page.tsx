@@ -13,32 +13,13 @@ export default function IngresosPage() {
   const { atenciones, vehiculos, clientes, servicios, boxes, checkIn, user } = useApp();
   const lavaderoId = user?.lavaderoId ?? Number(process.env.NEXT_PUBLIC_LAVADERO_ID ?? "1");
   const { cliente, vehiculo, serviciosDe } = useLookups();
-  const [patente, setPatente] = useState("");
+  const [modoVehiculo, setModoVehiculo] = useState<"existente" | "nuevo">("existente");
+  const [busquedaVehiculo, setBusquedaVehiculo] = useState("");
+  const [vehiculoId, setVehiculoId] = useState("");
   const [clienteId, setClienteId] = useState("");
-  const [busquedaCliente, setBusquedaCliente] = useState("");
-  const [vehiculoSeleccionadoId, setVehiculoSeleccionadoId] = useState("");
-  const found = useMemo(() => {
-    const v = vehiculos.find(
-      (x) =>
-        x.patente.replace(/\s/g, "").toUpperCase() ===
-        patente.replace(/\s/g, "").toUpperCase(),
-    );
-    if (!v) return null;
-    return { v, c: clientes.find((c) => c.id === v.clienteId) };
-  }, [patente, vehiculos, clientes]);
-  const clientesFiltrados = useMemo(() => {
-    const query = busquedaCliente.trim().toLocaleLowerCase();
-    if (!query) return [];
-    return clientes
-      .filter((c) =>
-        `${c.nombre} ${c.apellido} ${c.telefono}`
-          .toLocaleLowerCase()
-          .includes(query),
-      )
-      .slice(0, 6);
-  }, [busquedaCliente, clientes]);
-  const clienteSeleccionado = clientes.find((c) => c.id === clienteId);
-
+  const [nuevoCliente, setNuevoCliente] = useState(false);
+  const [errorFormulario, setErrorFormulario] = useState<string | null>(null);
+  const [patente, setPatente] = useState("");
   const [nombre, setNombre] = useState("");
   const [telefono, setTelefono] = useState("");
   const [marca, setMarca] = useState("");
@@ -47,114 +28,86 @@ export default function IngresosPage() {
   const [obs, setObs] = useState("");
   const servicioSeleccionado = servicios.find((servicio) => servicio.id === servicioId);
 
-  function onClienteSeleccionado(clienteId: string) {
-    setClienteId(clienteId);
-    const seleccionado = clientes.find((item) => item.id === clienteId);
-    setBusquedaCliente(
-      seleccionado
-        ? `${seleccionado.nombre} ${seleccionado.apellido}`.trim()
-        : "",
-    );
+  const vehiculoSeleccionado = vehiculos.find((v) => v.id === vehiculoId);
+  const clienteDelVehiculo = vehiculoSeleccionado
+    ? clientes.find((c) => c.id === vehiculoSeleccionado.clienteId)
+    : undefined;
+  const vehiculosFiltrados = useMemo(() => {
+    const query = busquedaVehiculo.trim().toLocaleLowerCase();
+    return vehiculos
+      .filter((v) => {
+        const owner = clientes.find((c) => c.id === v.clienteId);
+        const details =
+          `${v.patente} ${v.marca} ${v.modelo} ${owner?.nombre ?? ""} ${owner?.apellido ?? ""} ${owner?.telefono ?? ""}`;
+        return !query || details.toLocaleLowerCase().includes(query);
+      })
+      .slice(0, 8);
+  }, [busquedaVehiculo, clientes, vehiculos]);
+  const vehiculoConPatente = modoVehiculo === "nuevo"
+    ? vehiculos.find(
+        (v) =>
+          v.patente.replace(/\s/g, "").toUpperCase() ===
+          patente.replace(/\s/g, "").toUpperCase(),
+      )
+    : undefined;
 
-    if (vehiculoSeleccionadoId) {
-      const vehiculoActual = vehiculos.find(
-        (item) => item.id === vehiculoSeleccionadoId,
-      );
-      if (vehiculoActual?.clienteId !== clienteId) {
-        setVehiculoSeleccionadoId("");
-        setPatente("");
-        setMarca("");
-        setModelo("");
-      }
-    }
-
-    setNombre(
-      seleccionado
-        ? `${seleccionado.nombre} ${seleccionado.apellido}`.trim()
-        : "",
-    );
-    setTelefono(seleccionado?.telefono ?? "");
-  }
-
-  function onVehiculoSeleccionado(vehiculoId: string) {
-    setVehiculoSeleccionadoId(vehiculoId);
-    const seleccionado = vehiculos.find((item) => item.id === vehiculoId);
-    if (!seleccionado) {
-      setPatente("");
-      setMarca("");
-      setModelo("");
-      return;
-    }
-
-    const propietario = clientes.find(
-      (item) => item.id === seleccionado.clienteId,
-    );
-    setClienteId(propietario?.id ?? "");
-    setBusquedaCliente(
-      propietario
-        ? `${propietario.nombre} ${propietario.apellido}`.trim()
-        : "",
-    );
-    setNombre(
-      propietario
-        ? `${propietario.nombre} ${propietario.apellido}`.trim()
-        : "",
-    );
-    setTelefono(propietario?.telefono ?? "");
-    setPatente(seleccionado.patente);
-    setMarca(seleccionado.marca);
-    setModelo(seleccionado.modelo);
-  }
-
-  function onPatente(value: string) {
-    setPatente(value);
-    const v = vehiculos.find(
-      (x) =>
-        x.patente.replace(/\s/g, "").toUpperCase() ===
-        value.replace(/\s/g, "").toUpperCase(),
-    );
-    if (v) {
-      const c = clientes.find((cli) => cli.id === v.clienteId);
-      setVehiculoSeleccionadoId(v.id);
-      setClienteId(c?.id ?? "");
-      setBusquedaCliente(c ? `${c.nombre} ${c.apellido}` : "");
-      setNombre(`${c?.nombre ?? ""} ${c?.apellido ?? ""}`.trim());
-      setTelefono(c?.telefono ?? "");
-      setMarca(v.marca);
-      setModelo(v.modelo);
-    } else if (vehiculoSeleccionadoId) {
-      setVehiculoSeleccionadoId("");
-      setClienteId("");
-      setBusquedaCliente("");
-      setNombre("");
-      setTelefono("");
-      setMarca("");
-      setModelo("");
-    }
-  }
-
-  function onSubmit(e: FormEvent) {
-    e.preventDefault();
-    checkIn({
-      patente,
-      clienteId: clienteSeleccionado?.id,
-      clienteNombre: nombre,
-      telefono,
-      marca,
-      modelo,
-      servicioId,
-      observaciones: obs,
-    });
-    setPatente("");
+  function limpiarFormulario() {
+    setModoVehiculo("existente");
+    setBusquedaVehiculo("");
+    setVehiculoId("");
     setClienteId("");
-    setBusquedaCliente("");
-    setVehiculoSeleccionadoId("");
+    setNuevoCliente(false);
+    setPatente("");
     setNombre("");
     setTelefono("");
     setMarca("");
     setModelo("");
     setServicioId("");
     setObs("");
+    setErrorFormulario(null);
+  }
+
+  function onSubmit(e: FormEvent) {
+    e.preventDefault();
+    setErrorFormulario(null);
+    if (modoVehiculo === "existente" && !vehiculoSeleccionado) {
+      setErrorFormulario("Buscá y seleccioná un vehículo registrado.");
+      return;
+    }
+    if (modoVehiculo === "nuevo" && vehiculoConPatente) {
+      return;
+    }
+    if (modoVehiculo === "existente" && !clienteDelVehiculo) {
+      setErrorFormulario("No se encontró el cliente asociado a este vehículo.");
+      return;
+    }
+    if (modoVehiculo === "nuevo" && !nuevoCliente && !clienteId) {
+      setErrorFormulario("Seleccioná el cliente al que pertenece el vehículo.");
+      return;
+    }
+
+    const clienteNuevoNombre = nombre.trim();
+    const clienteActual = clientes.find((c) => c.id === clienteId);
+    checkIn({
+      patente: vehiculoSeleccionado?.patente ?? patente.trim(),
+      vehiculoId: vehiculoSeleccionado?.id,
+      clienteId: vehiculoSeleccionado?.clienteId ?? (nuevoCliente ? undefined : clienteId),
+      clienteNombre: vehiculoSeleccionado
+        ? `${clienteDelVehiculo?.nombre ?? ""} ${clienteDelVehiculo?.apellido ?? ""}`.trim()
+        : nuevoCliente
+          ? clienteNuevoNombre
+          : `${clienteActual?.nombre ?? ""} ${clienteActual?.apellido ?? ""}`.trim(),
+      telefono: vehiculoSeleccionado?.clienteId
+        ? clienteDelVehiculo?.telefono ?? ""
+        : nuevoCliente
+          ? telefono.trim()
+          : clienteActual?.telefono ?? "",
+      marca: vehiculoSeleccionado?.marca ?? marca.trim(),
+      modelo: vehiculoSeleccionado?.modelo ?? modelo.trim(),
+      servicioId,
+      observaciones: obs,
+    });
+    limpiarFormulario();
   }
 
   const ocupacion = Math.round(
@@ -207,212 +160,249 @@ export default function IngresosPage() {
       <div className="grid gap-5 xl:grid-cols-[1.2fr_0.8fr]">
         <Card title="Ingreso sin reserva">
           <form onSubmit={onSubmit} className="grid gap-4 sm:grid-cols-2">
-            <div className="grid gap-4 rounded-2xl bg-slate-50 p-4 sm:col-span-2">
-              <div>
-                <label
-                  htmlFor="vehiculo-registrado"
-                  className="mb-1 block text-xs font-semibold text-slate-500"
-                >
-                  Vehículo registrado (opcional)
-                </label>
-                <select
-                  id="vehiculo-registrado"
-                  className="field bg-white"
-                  value={vehiculoSeleccionadoId}
-                  onChange={(e) => onVehiculoSeleccionado(e.target.value)}
-                >
-                  <option value="">Cargar vehículo nuevo</option>
-                  {vehiculos.map((item) => {
-                    const propietario = clientes.find(
-                      (clienteActual) => clienteActual.id === item.clienteId,
-                    );
-                    return (
-                      <option key={item.id} value={item.id}>
-                        {item.patente} · {item.marca} {item.modelo}
-                        {propietario
-                          ? ` · ${propietario.nombre} ${propietario.apellido}`
-                          : ""}
-                      </option>
-                    );
-                  })}
-                </select>
-              </div>
-              <p className="text-xs text-slate-500">
-                Al elegir un vehículo registrado se completan sus datos. También
-                podés ingresar la patente para recuperarlo.
-              </p>
-            </div>
             <div className="sm:col-span-2">
-              <label htmlFor="patente-ingreso" className="mb-1 block text-xs font-semibold text-slate-500">
-                Patente
-              </label>
-              <input
-                id="patente-ingreso"
-                className="field"
-                placeholder="AB 123 CD"
-                value={patente}
-                onChange={(e) => onPatente(e.target.value)}
-                required
-              />
-              {found && (
-                <p className="mt-1 text-xs text-emerald-600">
-                  Cliente frecuente encontrado. Se recuperó historial y datos del
-                  vehículo.
-                </p>
-              )}
-            </div>
-            <div className="sm:col-span-2">
-              <label
-                htmlFor="buscar-cliente"
-                className="mb-1 block text-xs font-semibold text-slate-500"
-              >
-                Buscar cliente existente
-              </label>
-              <input
-                id="buscar-cliente"
-                className="field"
-                type="search"
-                placeholder="Nombre, apellido o teléfono"
-                value={busquedaCliente}
-                onChange={(e) => {
-                  setBusquedaCliente(e.target.value);
-                  if (clienteId) {
-                    setClienteId("");
-                    setVehiculoSeleccionadoId("");
+              <div className="mb-1.5 flex items-center justify-between gap-2">
+                <label className="text-xs font-semibold text-slate-500">Vehículo</label>
+                <button
+                  type="button"
+                  className="text-xs font-semibold text-brand"
+                  onClick={() => {
+                    setModoVehiculo((modo) =>
+                      modo === "existente" ? "nuevo" : "existente",
+                    );
+                    setVehiculoId("");
+                    setBusquedaVehiculo("");
                     setPatente("");
                     setMarca("");
                     setModelo("");
-                    setNombre("");
-                    setTelefono("");
-                  }
-                }}
-              />
-              {clienteSeleccionado ? (
-                <div className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-xl bg-violet-50 px-3 py-2 text-sm">
-                  <span>
-                    Cliente seleccionado:{" "}
-                    <strong>
-                      {clienteSeleccionado.nombre} {clienteSeleccionado.apellido}
-                    </strong>{" "}
-                    · {clienteSeleccionado.telefono}
-                  </span>
-                  <button
-                    type="button"
-                    className="text-xs font-semibold text-brand"
-                    onClick={() => {
-                      setClienteId("");
-                      setBusquedaCliente("");
-                      setVehiculoSeleccionadoId("");
-                      setNombre("");
-                      setTelefono("");
-                      setPatente("");
-                      setMarca("");
-                      setModelo("");
-                    }}
-                  >
-                    Cambiar cliente
-                  </button>
-                </div>
-              ) : (
-                <>
-                  {busquedaCliente.trim() && (
-                    <ul
-                      aria-label="Clientes encontrados"
-                      className="mt-2 max-h-40 space-y-1 overflow-auto rounded-xl border border-slate-200 p-1"
+                    setClienteId("");
+                    setNuevoCliente(false);
+                    setErrorFormulario(null);
+                  }}
+                >
+                  {modoVehiculo === "existente" ? "+ Registrar nuevo" : "Buscar existente"}
+                </button>
+              </div>
+              {modoVehiculo === "existente" ? (
+                vehiculoSeleccionado ? (
+                  <div className="rounded-xl bg-violet-50 px-3 py-3 text-sm">
+                    <p className="font-semibold">
+                      {vehiculoSeleccionado.patente} · {vehiculoSeleccionado.marca}{" "}
+                      {vehiculoSeleccionado.modelo}
+                    </p>
+                    <p className="mt-1 text-slate-600">
+                      Cliente: {clienteDelVehiculo
+                        ? `${clienteDelVehiculo.nombre} ${clienteDelVehiculo.apellido} · ${clienteDelVehiculo.telefono}`
+                        : "No disponible"}
+                    </p>
+                    <button
+                      type="button"
+                      className="mt-2 text-xs font-semibold text-brand"
+                      onClick={() => {
+                        setVehiculoId("");
+                        setBusquedaVehiculo("");
+                        setErrorFormulario(null);
+                      }}
                     >
-                      {clientesFiltrados.length ? (
-                        clientesFiltrados.map((c) => (
-                          <li key={c.id}>
-                            <button
-                              type="button"
-                              className="w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-slate-50"
-                              onClick={() => {
-                                onClienteSeleccionado(c.id);
-                              }}
-                            >
-                              <span className="font-semibold">
-                                {c.nombre} {c.apellido}
-                              </span>
-                              <span className="ml-2 text-slate-500">
-                                {c.telefono}
-                              </span>
-                            </button>
-                          </li>
-                        ))
+                      Cambiar vehículo
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <input
+                      className="field"
+                      type="search"
+                      aria-label="Buscar vehículo existente"
+                      placeholder="Patente, marca, modelo o cliente"
+                      value={busquedaVehiculo}
+                      onChange={(e) => setBusquedaVehiculo(e.target.value)}
+                    />
+                    <ul
+                      aria-label="Vehículos encontrados"
+                      className="mt-2 max-h-48 space-y-1 overflow-auto rounded-xl border border-slate-200 p-1"
+                    >
+                      {vehiculosFiltrados.length ? (
+                        vehiculosFiltrados.map((v) => {
+                          const propietario = clientes.find((c) => c.id === v.clienteId);
+                          return (
+                            <li key={v.id}>
+                              <button
+                                type="button"
+                                className="w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-slate-50"
+                                onClick={() => {
+                                  setVehiculoId(v.id);
+                                  setErrorFormulario(null);
+                                }}
+                              >
+                                <span className="font-semibold">
+                                  {v.patente} · {v.marca} {v.modelo}
+                                </span>
+                                <span className="block text-xs text-slate-500">
+                                  {propietario
+                                    ? `${propietario.nombre} ${propietario.apellido} · ${propietario.telefono}`
+                                    : "Cliente no disponible"}
+                                </span>
+                              </button>
+                            </li>
+                          );
+                        })
                       ) : (
                         <li className="px-3 py-2 text-sm text-slate-500">
-                          No encontramos clientes con esos datos. Podés
-                          registrarlo como nuevo.
+                          No encontramos vehículos. Podés registrar uno nuevo.
                         </li>
                       )}
                     </ul>
-                  )}
-                  <div className="mt-3 grid gap-4 sm:grid-cols-2">
-                    <div>
-                      <label
-                        htmlFor="nombre-cliente"
-                        className="mb-1 block text-xs font-semibold text-slate-500"
-                      >
-                        Nombre y apellido del nuevo cliente
+                  </>
+                )
+              ) : (
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <div>
+                    <label className="mb-1 block text-xs font-semibold text-slate-500">
+                      Patente
+                    </label>
+                    <input
+                      className="field uppercase"
+                      placeholder="AB 123 CD"
+                      value={patente}
+                      onChange={(e) => setPatente(e.target.value)}
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-semibold text-slate-500">
+                      Marca
+                    </label>
+                    <input
+                      className="field"
+                      value={marca}
+                      onChange={(e) => setMarca(e.target.value)}
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-semibold text-slate-500">
+                      Modelo
+                    </label>
+                    <input
+                      className="field"
+                      value={modelo}
+                      onChange={(e) => setModelo(e.target.value)}
+                      required
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+            {modoVehiculo === "nuevo" && (
+              <div className="sm:col-span-2">
+                {nuevoCliente ? (
+                  <>
+                    <div className="mb-1.5 flex items-center justify-between gap-2">
+                      <label className="text-xs font-semibold text-slate-500">
+                        Nuevo cliente propietario
                       </label>
+                      <button
+                        type="button"
+                        className="text-xs font-semibold text-brand"
+                        onClick={() => {
+                          setNuevoCliente(false);
+                          setNombre("");
+                          setTelefono("");
+                        }}
+                      >
+                        Elegir existente
+                      </button>
+                    </div>
+                    <div className="grid gap-3 sm:grid-cols-2">
                       <input
-                        id="nombre-cliente"
                         className="field"
+                        aria-label="Nombre y apellido del cliente"
+                        placeholder="Nombre y apellido"
                         value={nombre}
                         onChange={(e) => setNombre(e.target.value)}
                         required
                       />
-                    </div>
-                    <div>
-                      <label
-                        htmlFor="telefono-cliente"
-                        className="mb-1 block text-xs font-semibold text-slate-500"
-                      >
-                        Teléfono / WhatsApp
-                      </label>
                       <input
-                        id="telefono-cliente"
                         className="field"
                         type="tel"
+                        aria-label="Teléfono del cliente"
+                        placeholder="Teléfono / WhatsApp"
                         value={telefono}
                         onChange={(e) => setTelefono(e.target.value)}
                         required
                       />
                     </div>
-                  </div>
-                </>
-              )}
-            </div>
-            <div>
-              <label htmlFor="marca-ingreso" className="mb-1 block text-xs font-semibold text-slate-500">
-                Marca
-              </label>
-              <input
-                id="marca-ingreso"
-                className="field"
-                value={marca}
-                onChange={(e) => setMarca(e.target.value)}
-                required
-              />
-            </div>
-            <div>
-              <label htmlFor="modelo-ingreso" className="mb-1 block text-xs font-semibold text-slate-500">
-                Modelo
-              </label>
-              <input
-                id="modelo-ingreso"
-                className="field"
-                value={modelo}
-                onChange={(e) => setModelo(e.target.value)}
-                required
-              />
-            </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="mb-1.5 flex items-center justify-between gap-2">
+                      <label
+                        htmlFor="cliente-vehiculo"
+                        className="text-xs font-semibold text-slate-500"
+                      >
+                        Cliente propietario
+                      </label>
+                      <button
+                        type="button"
+                        className="text-xs font-semibold text-brand"
+                        onClick={() => {
+                          setNuevoCliente(true);
+                          setClienteId("");
+                          setNombre("");
+                          setTelefono("");
+                        }}
+                      >
+                        + Registrar cliente nuevo
+                      </button>
+                    </div>
+                    <select
+                      id="cliente-vehiculo"
+                      className="field"
+                      value={clienteId}
+                      onChange={(e) => setClienteId(e.target.value)}
+                      required
+                    >
+                      <option value="">Seleccionar cliente</option>
+                      {clientes.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.nombre} {c.apellido} · {c.telefono}
+                        </option>
+                      ))}
+                    </select>
+                  </>
+                )}
+              </div>
+            )}
+            {vehiculoConPatente && (
+              <div className="sm:col-span-2 rounded-xl bg-amber-50 p-3 text-sm text-amber-800">
+                <p>
+                  Esta patente ya pertenece a un vehículo registrado. Seleccionalo
+                  para conservar su cliente asociado.
+                </p>
+                <button
+                  type="button"
+                  className="mt-2 font-semibold underline"
+                  onClick={() => {
+                    setModoVehiculo("existente");
+                    setBusquedaVehiculo(vehiculoConPatente.patente);
+                    setVehiculoId("");
+                    setErrorFormulario(null);
+                  }}
+                >
+                  Buscar {vehiculoConPatente.patente}
+                </button>
+              </div>
+            )}
+            {errorFormulario && (
+              <p role="alert" className="sm:col-span-2 rounded-xl bg-red-50 p-3 text-sm text-red-700">
+                {errorFormulario}
+              </p>
+            )}
             <div className="sm:col-span-2">
-              <label htmlFor="servicio-ingreso" className="mb-1 block text-xs font-semibold text-slate-500">
+              <label className="mb-1 block text-xs font-semibold text-slate-500">
                 Servicio
               </label>
               <select
-                id="servicio-ingreso"
                 className="field"
                 value={servicioId}
                 onChange={(e) => setServicioId(e.target.value)}
@@ -441,11 +431,10 @@ export default function IngresosPage() {
               )}
             </div>
             <div className="sm:col-span-2">
-              <label htmlFor="observaciones-ingreso" className="mb-1 block text-xs font-semibold text-slate-500">
+              <label className="mb-1 block text-xs font-semibold text-slate-500">
                 Observaciones / evidencia
               </label>
               <textarea
-                id="observaciones-ingreso"
                 className="field min-h-20"
                 value={obs}
                 onChange={(e) => setObs(e.target.value)}
