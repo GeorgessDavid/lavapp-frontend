@@ -35,6 +35,28 @@ con credenciales (`FRONTEND_ORIGINS`) y la cookie `SameSite=Lax` requiere el mis
 | `NEXT_PUBLIC_USE_MOCK`  | `true`                  | `false` para usar la API real             |
 | `NEXT_PUBLIC_API_URL`   | `http://localhost:8080` | URL base del back-end                     |
 
+## Cola de vehículos
+
+`/cola` muestra lo que dice el backend (`GET /lavaderos/{id}/ordenes?estado=`): primero los
+vehículos en espera, en el orden priorizado que devuelve la API y numerados por su posición,
+después los que están en lavado y los listos para retirar. En modo demo usa los datos mock.
+
+La cola se mantiene al día sola: se vuelve a pedir después de cada acción hecha desde la
+pantalla, cada 10 segundos mientras la pestaña está visible y al volver a ella. Hay un botón
+"Actualizar" con la hora de la última consulta. Si el backend falla se conserva la última cola
+vista, se avisa y se puede reintentar.
+
+## Pruebas
+
+```bash
+pnpm test
+```
+
+Corre las pruebas de los módulos puros de `src/lib` (armado de la cola, etapas y priorización
+por reservas) con el runner de Node, que ejecuta el TypeScript sin compilar. Requiere **Node 22.18
+o superior**. Por eso los módulos de `src/lib` se importan entre sí con extensión (`./etapas.ts`):
+Node no resuelve imports sin extensión.
+
 ---
 
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).

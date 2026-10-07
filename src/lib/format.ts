@@ -24,6 +24,15 @@ export function time(iso: string) {
   });
 }
 
+/** Hora con segundos, para marcas de "actualizado a las" donde los minutos no alcanzan. */
+export function timeWithSeconds(iso: string) {
+  return new Date(iso).toLocaleTimeString("es-AR", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+}
+
 export function todayLabel() {
   return new Date().toLocaleDateString("es-AR", {
     weekday: "long",
