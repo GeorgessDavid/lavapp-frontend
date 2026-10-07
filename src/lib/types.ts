@@ -130,9 +130,27 @@ export interface Atencion {
 
 export type QueueOrigin = "RESERVA" | "ESPONTANEO";
 
+/** Estados de una orden en el backend (EstadoOrden). */
+export type EstadoOrdenApi =
+  | "EN_ESPERA"
+  | "EN_PROGRESO"
+  | "LISTO"
+  | "ENTREGADO"
+  | "CANCELADO";
+
+/** Respuesta de /ordenes/{id} y de sus transiciones (iniciar-lavado, finalizar-servicio, retirar). */
+export interface OrdenTrabajoApi {
+  id: number;
+  lavaderoId: number;
+  estado: EstadoOrdenApi;
+  ingreso: string;
+  finLavado: string | null;
+  salida: string | null;
+}
+
 export interface OrdenColaApi {
   ordenId: number;
-  estado: "EN_ESPERA";
+  estado: EstadoOrdenApi;
   ingreso: string;
   patente: string;
   modelo: string;
