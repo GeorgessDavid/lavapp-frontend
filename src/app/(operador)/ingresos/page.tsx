@@ -6,7 +6,7 @@ import { Card, KpiCard } from "@/components/ui/Card";
 import { Plate, StageBadge } from "@/components/ui/badges";
 import { useApp } from "@/lib/store";
 import { useLookups } from "@/lib/lookups";
-import { time } from "@/lib/format";
+import { money, time } from "@/lib/format";
 import { LlegadaConReserva } from "@/components/LlegadaConReserva";
 
 export default function IngresosPage() {
@@ -14,7 +14,8 @@ export default function IngresosPage() {
   const lavaderoId = user?.lavaderoId ?? Number(process.env.NEXT_PUBLIC_LAVADERO_ID ?? "1");
   const { cliente, vehiculo, serviciosDe } = useLookups();
   const [patente, setPatente] = useState("");
-  const [clienteSeleccionadoId, setClienteSeleccionadoId] = useState("");
+  const [clienteId, setClienteId] = useState("");
+  const [busquedaCliente, setBusquedaCliente] = useState("");
   const [vehiculoSeleccionadoId, setVehiculoSeleccionadoId] = useState("");
   const found = useMemo(() => {
     const v = vehiculos.find(
@@ -25,17 +26,35 @@ export default function IngresosPage() {
     if (!v) return null;
     return { v, c: clientes.find((c) => c.id === v.clienteId) };
   }, [patente, vehiculos, clientes]);
+  const clientesFiltrados = useMemo(() => {
+    const query = busquedaCliente.trim().toLocaleLowerCase();
+    if (!query) return [];
+    return clientes
+      .filter((c) =>
+        `${c.nombre} ${c.apellido} ${c.telefono}`
+          .toLocaleLowerCase()
+          .includes(query),
+      )
+      .slice(0, 6);
+  }, [busquedaCliente, clientes]);
+  const clienteSeleccionado = clientes.find((c) => c.id === clienteId);
 
   const [nombre, setNombre] = useState("");
   const [telefono, setTelefono] = useState("");
   const [marca, setMarca] = useState("");
   const [modelo, setModelo] = useState("");
-  const [servicioId, setServicioId] = useState(servicios[1]?.id ?? "s2");
+  const [servicioId, setServicioId] = useState("");
   const [obs, setObs] = useState("");
+  const servicioSeleccionado = servicios.find((servicio) => servicio.id === servicioId);
 
   function onClienteSeleccionado(clienteId: string) {
-    setClienteSeleccionadoId(clienteId);
+    setClienteId(clienteId);
     const seleccionado = clientes.find((item) => item.id === clienteId);
+    setBusquedaCliente(
+      seleccionado
+        ? `${seleccionado.nombre} ${seleccionado.apellido}`.trim()
+        : "",
+    );
 
     if (vehiculoSeleccionadoId) {
       const vehiculoActual = vehiculos.find(
@@ -70,7 +89,12 @@ export default function IngresosPage() {
     const propietario = clientes.find(
       (item) => item.id === seleccionado.clienteId,
     );
-    setClienteSeleccionadoId(propietario?.id ?? "");
+    setClienteId(propietario?.id ?? "");
+    setBusquedaCliente(
+      propietario
+        ? `${propietario.nombre} ${propietario.apellido}`.trim()
+        : "",
+    );
     setNombre(
       propietario
         ? `${propietario.nombre} ${propietario.apellido}`.trim()
@@ -92,14 +116,16 @@ export default function IngresosPage() {
     if (v) {
       const c = clientes.find((cli) => cli.id === v.clienteId);
       setVehiculoSeleccionadoId(v.id);
-      setClienteSeleccionadoId(c?.id ?? "");
+      setClienteId(c?.id ?? "");
+      setBusquedaCliente(c ? `${c.nombre} ${c.apellido}` : "");
       setNombre(`${c?.nombre ?? ""} ${c?.apellido ?? ""}`.trim());
       setTelefono(c?.telefono ?? "");
       setMarca(v.marca);
       setModelo(v.modelo);
     } else if (vehiculoSeleccionadoId) {
       setVehiculoSeleccionadoId("");
-      setClienteSeleccionadoId("");
+      setClienteId("");
+      setBusquedaCliente("");
       setNombre("");
       setTelefono("");
       setMarca("");
@@ -111,6 +137,7 @@ export default function IngresosPage() {
     e.preventDefault();
     checkIn({
       patente,
+      clienteId: clienteSeleccionado?.id,
       clienteNombre: nombre,
       telefono,
       marca,
@@ -119,12 +146,14 @@ export default function IngresosPage() {
       observaciones: obs,
     });
     setPatente("");
-    setClienteSeleccionadoId("");
+    setClienteId("");
+    setBusquedaCliente("");
     setVehiculoSeleccionadoId("");
     setNombre("");
     setTelefono("");
     setMarca("");
     setModelo("");
+    setServicioId("");
     setObs("");
   }
 
@@ -178,30 +207,7 @@ export default function IngresosPage() {
       <div className="grid gap-5 xl:grid-cols-[1.2fr_0.8fr]">
         <Card title="Ingreso sin reserva">
           <form onSubmit={onSubmit} className="grid gap-4 sm:grid-cols-2">
-            <div className="grid gap-4 rounded-2xl bg-slate-50 p-4 sm:col-span-2 sm:grid-cols-2">
-              <div>
-                <label
-                  htmlFor="cliente-registrado"
-                  className="mb-1 block text-xs font-semibold text-slate-500"
-                >
-                  Cliente registrado (opcional)
-                </label>
-                <select
-                  id="cliente-registrado"
-                  className="field bg-white"
-                  value={clienteSeleccionadoId}
-                  onChange={(e) => onClienteSeleccionado(e.target.value)}
-                >
-                  <option value="">Cargar cliente nuevo</option>
-                  {clientes
-                    .filter((item) => !item.inactivo)
-                    .map((item) => (
-                      <option key={item.id} value={item.id}>
-                        {item.nombre} {item.apellido} · {item.telefono}
-                      </option>
-                    ))}
-                </select>
-              </div>
+            <div className="grid gap-4 rounded-2xl bg-slate-50 p-4 sm:col-span-2">
               <div>
                 <label
                   htmlFor="vehiculo-registrado"
@@ -231,9 +237,9 @@ export default function IngresosPage() {
                   })}
                 </select>
               </div>
-              <p className="text-xs text-slate-500 sm:col-span-2">
-                Al elegir un registro se completan sus datos. También podés
-                ingresar la patente para recuperar un vehículo existente.
+              <p className="text-xs text-slate-500">
+                Al elegir un vehículo registrado se completan sus datos. También
+                podés ingresar la patente para recuperarlo.
               </p>
             </div>
             <div className="sm:col-span-2">
@@ -255,35 +261,127 @@ export default function IngresosPage() {
                 </p>
               )}
             </div>
-            <div>
-              <label htmlFor="cliente-ingreso" className="mb-1 block text-xs font-semibold text-slate-500">
-                Cliente
+            <div className="sm:col-span-2">
+              <label
+                htmlFor="buscar-cliente"
+                className="mb-1 block text-xs font-semibold text-slate-500"
+              >
+                Buscar cliente existente
               </label>
               <input
-                id="cliente-ingreso"
+                id="buscar-cliente"
                 className="field"
-                value={nombre}
+                type="search"
+                placeholder="Nombre, apellido o teléfono"
+                value={busquedaCliente}
                 onChange={(e) => {
-                  setNombre(e.target.value);
-                  setClienteSeleccionadoId("");
+                  setBusquedaCliente(e.target.value);
+                  if (clienteId) {
+                    setClienteId("");
+                    setVehiculoSeleccionadoId("");
+                    setPatente("");
+                    setMarca("");
+                    setModelo("");
+                    setNombre("");
+                    setTelefono("");
+                  }
                 }}
-                required
               />
-            </div>
-            <div>
-              <label htmlFor="telefono-ingreso" className="mb-1 block text-xs font-semibold text-slate-500">
-                Teléfono / WhatsApp
-              </label>
-              <input
-                id="telefono-ingreso"
-                className="field"
-                value={telefono}
-                onChange={(e) => {
-                  setTelefono(e.target.value);
-                  setClienteSeleccionadoId("");
-                }}
-                required
-              />
+              {clienteSeleccionado ? (
+                <div className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-xl bg-violet-50 px-3 py-2 text-sm">
+                  <span>
+                    Cliente seleccionado:{" "}
+                    <strong>
+                      {clienteSeleccionado.nombre} {clienteSeleccionado.apellido}
+                    </strong>{" "}
+                    · {clienteSeleccionado.telefono}
+                  </span>
+                  <button
+                    type="button"
+                    className="text-xs font-semibold text-brand"
+                    onClick={() => {
+                      setClienteId("");
+                      setBusquedaCliente("");
+                      setVehiculoSeleccionadoId("");
+                      setNombre("");
+                      setTelefono("");
+                      setPatente("");
+                      setMarca("");
+                      setModelo("");
+                    }}
+                  >
+                    Cambiar cliente
+                  </button>
+                </div>
+              ) : (
+                <>
+                  {busquedaCliente.trim() && (
+                    <ul
+                      aria-label="Clientes encontrados"
+                      className="mt-2 max-h-40 space-y-1 overflow-auto rounded-xl border border-slate-200 p-1"
+                    >
+                      {clientesFiltrados.length ? (
+                        clientesFiltrados.map((c) => (
+                          <li key={c.id}>
+                            <button
+                              type="button"
+                              className="w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-slate-50"
+                              onClick={() => {
+                                onClienteSeleccionado(c.id);
+                              }}
+                            >
+                              <span className="font-semibold">
+                                {c.nombre} {c.apellido}
+                              </span>
+                              <span className="ml-2 text-slate-500">
+                                {c.telefono}
+                              </span>
+                            </button>
+                          </li>
+                        ))
+                      ) : (
+                        <li className="px-3 py-2 text-sm text-slate-500">
+                          No encontramos clientes con esos datos. Podés
+                          registrarlo como nuevo.
+                        </li>
+                      )}
+                    </ul>
+                  )}
+                  <div className="mt-3 grid gap-4 sm:grid-cols-2">
+                    <div>
+                      <label
+                        htmlFor="nombre-cliente"
+                        className="mb-1 block text-xs font-semibold text-slate-500"
+                      >
+                        Nombre y apellido del nuevo cliente
+                      </label>
+                      <input
+                        id="nombre-cliente"
+                        className="field"
+                        value={nombre}
+                        onChange={(e) => setNombre(e.target.value)}
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label
+                        htmlFor="telefono-cliente"
+                        className="mb-1 block text-xs font-semibold text-slate-500"
+                      >
+                        Teléfono / WhatsApp
+                      </label>
+                      <input
+                        id="telefono-cliente"
+                        className="field"
+                        type="tel"
+                        value={telefono}
+                        onChange={(e) => setTelefono(e.target.value)}
+                        required
+                      />
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
             <div>
               <label htmlFor="marca-ingreso" className="mb-1 block text-xs font-semibold text-slate-500">
@@ -318,19 +416,28 @@ export default function IngresosPage() {
                 className="field"
                 value={servicioId}
                 onChange={(e) => setServicioId(e.target.value)}
+                required
               >
+                <option value="">Seleccionar servicio</option>
                 {servicios.map((s) => (
                   <option key={s.id} value={s.id}>
-                    {s.nombre} · {s.duracionMin} min
+                    {s.nombre} · {s.duracionMin} min · {money(s.precio)}
                   </option>
                 ))}
               </select>
-              {servicios.find((item) => item.id === servicioId) && (
-                <p className="mt-1 text-xs text-slate-500">
-                  {servicios.find((item) => item.id === servicioId)?.descripcion}
-                  {" · "}
-                  ${servicios.find((item) => item.id === servicioId)?.precio.toLocaleString("es-AR")}
-                </p>
+              {servicioSeleccionado && (
+                <div
+                  aria-live="polite"
+                  className="mt-2 rounded-xl bg-violet-50 px-3 py-2 text-sm"
+                >
+                  <p className="font-semibold text-navy">
+                    {money(servicioSeleccionado.precio)} ·{" "}
+                    {servicioSeleccionado.duracionMin} min estimados
+                  </p>
+                  <p className="mt-1 text-slate-600">
+                    {servicioSeleccionado.descripcion}
+                  </p>
+                </div>
               )}
             </div>
             <div className="sm:col-span-2">
