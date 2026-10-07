@@ -40,6 +40,7 @@ import {
   setOnUnauthorized,
 } from "./api";
 import { tienePuestoAsignado } from "./box-assignment";
+import { estaEnLavado } from "./etapas";
 
 const STORAGE_KEY = "lavapp_session";
 
@@ -62,6 +63,7 @@ interface AppActions {
   logout: () => Promise<void>;
   checkIn: (payload: {
     patente: string;
+    clienteId?: string;
     clienteNombre: string;
     telefono: string;
     marca: string;
@@ -73,7 +75,9 @@ interface AppActions {
   iniciarLavado: (atencionId: string) => boolean;
   asignarBox: (atencionId: string, boxId: string) => void;
   retirar: (atencionId: string) => void;
+  finalizarServicio: (atencionId: string) => void;
   crearReserva: (payload: Omit<Reserva, "id" | "estado">) => void;
+  notificar: (mensaje: string) => void;
   clearToast: () => void;
 }
 
@@ -160,11 +164,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
     };
 
     const checkIn: AppActions["checkIn"] = (payload) => {
-      let cliente = clientes.find(
-        (c) =>
-          `${c.nombre} ${c.apellido}`.toLowerCase() ===
-          payload.clienteNombre.toLowerCase(),
-      );
+      let cliente = payload.clienteId
+        ? clientes.find((c) => c.id === payload.clienteId)
+        : clientes.find(
+            (c) =>
+              `${c.nombre} ${c.apellido}`.toLowerCase() ===
+              payload.clienteNombre.toLowerCase(),
+          );
+      if (payload.clienteId && !cliente) {
+        throw new Error("El cliente seleccionado ya no está disponible.");
+      }
       if (!cliente) {
         const [nombre, ...rest] = payload.clienteNombre.split(" ");
         cliente = {
@@ -312,6 +321,31 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setToast("Vehículo retirado. El puesto quedó libre.");
     };
 
+    // HU-34: solo un vehículo en lavado puede finalizarse. Pasa a LISTO y libera el puesto, pero
+    // sigue en la cola (y ocupando lugar) hasta que se confirma el retiro.
+    const finalizarServicio = (atencionId: string) => {
+      const atencion = atenciones.find((a) => a.id === atencionId);
+      if (!atencion || !estaEnLavado(atencion.estado)) {
+        setToast("Solo se puede finalizar un vehículo que está en lavado.");
+        return;
+      }
+      setAtenciones((prev) =>
+        prev.map((a) =>
+          a.id === atencionId ? { ...a, estado: "LISTO", demoraMin: 0 } : a,
+        ),
+      );
+      setBoxes((prev) =>
+        prev.map((b) =>
+          b.atencionId === atencionId
+            ? { ...b, estado: "DISPONIBLE", atencionId: undefined }
+            : b,
+        ),
+      );
+      setToast(
+        `Servicio finalizado. WhatsApp enviado: el vehículo está listo para retirar. /seguimiento/${atencion.tokenSeguimiento}`,
+      );
+    };
+
     const crearReserva: AppActions["crearReserva"] = (payload) => {
       setReservas((prev) => [
         {
@@ -343,7 +377,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       iniciarLavado,
       asignarBox,
       retirar,
+      finalizarServicio,
       crearReserva,
+      notificar: setToast,
       clearToast: () => setToast(null),
     };
   }, [user, clientes, vehiculos, boxes, atenciones, reservas, toast]);

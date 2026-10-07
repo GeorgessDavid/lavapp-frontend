@@ -1,7 +1,9 @@
 import type {
   Atencion,
   CapacidadActual,
+  EstadoOrdenApi,
   OrdenColaApi,
+  OrdenTrabajoApi,
   PlanActual,
   Role,
   User,
@@ -283,12 +285,26 @@ export async function fetchAtenciones(): Promise<Atencion[]> {
   return request<Atencion[]>("/api/atenciones");
 }
 
-export async function fetchColaPrioritaria(
+/** Las órdenes del lavadero en un estado. Las EN_ESPERA vienen ya priorizadas por el backend. */
+export async function fetchOrdenes(
   lavaderoId: number,
+  estado: EstadoOrdenApi,
 ): Promise<OrdenColaApi[]> {
   return request<OrdenColaApi[]>(
-    `/lavaderos/${lavaderoId}/ordenes?estado=EN_ESPERA`,
+    `/lavaderos/${lavaderoId}/ordenes?estado=${estado}`,
   );
+}
+
+/**
+ * Finaliza el lavado de una orden (HU-34): EN_PROGRESO -> LISTO, con el momento en finLavado.
+ * El backend responde 409 si la orden no está en lavado (por ejemplo, si ya fue finalizada).
+ */
+export async function finalizarServicioApi(
+  ordenId: number,
+): Promise<OrdenTrabajoApi> {
+  return request<OrdenTrabajoApi>(`/ordenes/${ordenId}/finalizar-servicio`, {
+    method: "PATCH",
+  });
 }
 
 export async function patchEstado(
