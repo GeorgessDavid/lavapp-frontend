@@ -4,7 +4,7 @@ import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Logo } from "@/components/brand/Logo";
 import { useApp } from "@/lib/store";
-import { homeForRole } from "@/lib/api";
+import { apiConfig, homeForRole } from "@/lib/api";
 
 const demos = [
   { email: "operador@lavapp.com", password: "operador", rol: "Operador" },
@@ -15,8 +15,10 @@ const demos = [
 export default function LoginPage() {
   const { login } = useApp();
   const router = useRouter();
-  const [email, setEmail] = useState(demos[0].email);
-  const [password, setPassword] = useState(demos[0].password);
+  const [email, setEmail] = useState(apiConfig.USE_MOCK ? demos[0].email : "");
+  const [password, setPassword] = useState(
+    apiConfig.USE_MOCK ? demos[0].password : "",
+  );
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -61,7 +63,9 @@ export default function LoginPage() {
           </div>
           <h2 className="text-2xl font-bold">Ingresar a LavApp</h2>
           <p className="mt-1 text-sm text-slate-500">
-            Usá una cuenta de demostración o conectá tu API Spring Boot.
+            {apiConfig.USE_MOCK
+              ? "Modo demo: usá una cuenta de demostración."
+              : "Ingresá con tu email y contraseña."}
           </p>
 
           <label className="mt-6 mb-1 block text-xs font-semibold text-slate-500">
@@ -93,6 +97,7 @@ export default function LoginPage() {
             {loading ? "Ingresando..." : "Entrar"}
           </button>
 
+          {apiConfig.USE_MOCK && (
           <div className="mt-6 space-y-2">
             <p className="text-[11px] font-semibold tracking-wide text-slate-400 uppercase">
               Accesos demo
@@ -112,6 +117,7 @@ export default function LoginPage() {
               </button>
             ))}
           </div>
+          )}
         </form>
       </section>
     </div>

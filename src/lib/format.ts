@@ -2,7 +2,7 @@ import type { ServiceStage } from "./types";
 
 export const stageLabel: Record<ServiceStage, string> = {
   EN_ESPERA: "En espera",
-  LAVADO: "Lavado",
+  LAVADO: "En lavado",
   INTERIOR: "Interior",
   TERMINACIONES: "Terminaciones",
   LISTO: "Listo para retirar",
@@ -21,6 +21,15 @@ export function time(iso: string) {
   return new Date(iso).toLocaleTimeString("es-AR", {
     hour: "2-digit",
     minute: "2-digit",
+  });
+}
+
+/** Hora con segundos, para marcas de "actualizado a las" donde los minutos no alcanzan. */
+export function timeWithSeconds(iso: string) {
+  return new Date(iso).toLocaleTimeString("es-AR", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
   });
 }
 

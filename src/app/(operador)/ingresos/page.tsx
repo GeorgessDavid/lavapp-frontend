@@ -6,7 +6,7 @@ import { Card, KpiCard } from "@/components/ui/Card";
 import { Plate, StageBadge } from "@/components/ui/badges";
 import { useApp } from "@/lib/store";
 import { useLookups } from "@/lib/lookups";
-import { time } from "@/lib/format";
+import { money, time } from "@/lib/format";
 import { LlegadaConReserva } from "@/components/LlegadaConReserva";
 
 export default function IngresosPage() {
@@ -24,8 +24,9 @@ export default function IngresosPage() {
   const [telefono, setTelefono] = useState("");
   const [marca, setMarca] = useState("");
   const [modelo, setModelo] = useState("");
-  const [servicioId, setServicioId] = useState(servicios[1]?.id ?? "s2");
+  const [servicioId, setServicioId] = useState("");
   const [obs, setObs] = useState("");
+  const servicioSeleccionado = servicios.find((servicio) => servicio.id === servicioId);
 
   const vehiculoSeleccionado = vehiculos.find((v) => v.id === vehiculoId);
   const clienteDelVehiculo = vehiculoSeleccionado
@@ -61,6 +62,7 @@ export default function IngresosPage() {
     setTelefono("");
     setMarca("");
     setModelo("");
+    setServicioId("");
     setObs("");
     setErrorFormulario(null);
   }
@@ -404,13 +406,29 @@ export default function IngresosPage() {
                 className="field"
                 value={servicioId}
                 onChange={(e) => setServicioId(e.target.value)}
+                required
               >
+                <option value="">Seleccionar servicio</option>
                 {servicios.map((s) => (
                   <option key={s.id} value={s.id}>
-                    {s.nombre} · {s.duracionMin} min
+                    {s.nombre} · {s.duracionMin} min · {money(s.precio)}
                   </option>
                 ))}
               </select>
+              {servicioSeleccionado && (
+                <div
+                  aria-live="polite"
+                  className="mt-2 rounded-xl bg-violet-50 px-3 py-2 text-sm"
+                >
+                  <p className="font-semibold text-navy">
+                    {money(servicioSeleccionado.precio)} ·{" "}
+                    {servicioSeleccionado.duracionMin} min estimados
+                  </p>
+                  <p className="mt-1 text-slate-600">
+                    {servicioSeleccionado.descripcion}
+                  </p>
+                </div>
+              )}
             </div>
             <div className="sm:col-span-2">
               <label className="mb-1 block text-xs font-semibold text-slate-500">

@@ -32,7 +32,14 @@ import {
   vehiculos as seedVehiculos,
   NEXT_STAGE,
 } from "./mock-data";
-import { loginRequest } from "./api";
+import {
+  apiConfig,
+  fetchMe,
+  loginRequest,
+  logoutRequest,
+  setOnUnauthorized,
+} from "./api";
+import { estaEnLavado } from "./etapas";
 
 const STORAGE_KEY = "lavapp_session";
 
@@ -52,7 +59,7 @@ interface AppState {
 
 interface AppActions {
   login: (email: string, password: string) => Promise<User>;
-  logout: () => void;
+  logout: () => Promise<void>;
   checkIn: (payload: {
     patente: string;
     clienteId?: string;
@@ -67,7 +74,9 @@ interface AppActions {
   avanzar: (atencionId: string) => void;
   asignarBox: (atencionId: string, boxId: string) => void;
   retirar: (atencionId: string) => void;
+  finalizarServicio: (atencionId: string) => void;
   crearReserva: (payload: Omit<Reserva, "id" | "estado">) => void;
+  notificar: (mensaje: string) => void;
   clearToast: () => void;
 }
 
@@ -95,26 +104,62 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
+    let cancelled = false;
     const timeout = window.setTimeout(() => {
+      // Resto de la versión con token: ya no se usa.
+      localStorage.removeItem("lavapp_token");
+      // Se muestra enseguida el usuario cacheado para no parpadear al login...
       setUser(loadUser());
       setHydrated(true);
+      if (apiConfig.USE_MOCK) return;
+      // ...y se confirma la sesión con el backend (cookie LAVAPP_SESSION).
+      fetchMe()
+        .then((actual) => {
+          if (cancelled) return;
+          if (actual) {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(actual));
+            setUser(actual);
+          } else {
+            localStorage.removeItem(STORAGE_KEY);
+            setUser(null);
+          }
+        })
+        .catch(() => {
+          // Backend caído o sin red: se conserva el cache; las pantallas mostrarán sus errores.
+        });
     }, 0);
-    return () => window.clearTimeout(timeout);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timeout);
+    };
+  }, []);
+
+  useEffect(() => {
+    // Cualquier 401 fuera del login (sesión expirada, usuario desactivado) cierra la sesión local.
+    setOnUnauthorized(() => {
+      localStorage.removeItem(STORAGE_KEY);
+      setUser(null);
+    });
+    return () => setOnUnauthorized(null);
   }, []);
 
   const value = useMemo(() => {
     const login = async (email: string, password: string) => {
-      const res = await loginRequest(email, password);
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(res.user));
-      localStorage.setItem("lavapp_token", res.token);
-      setUser(res.user);
-      return res.user;
+      const usuario = await loginRequest(email, password);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(usuario));
+      setUser(usuario);
+      return usuario;
     };
 
-    const logout = () => {
+    const logout = async () => {
+      // Primero se cierra la sesión local (la UI redirige al login) y después la del backend.
       localStorage.removeItem(STORAGE_KEY);
-      localStorage.removeItem("lavapp_token");
       setUser(null);
+      try {
+        await logoutRequest();
+      } catch {
+        // Si el backend no responde, la cookie expira sola; la sesión local ya está cerrada.
+      }
     };
 
     const checkIn: AppActions["checkIn"] = (payload) => {
@@ -262,6 +307,31 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setToast("Vehículo retirado. El puesto quedó libre.");
     };
 
+    // HU-34: solo un vehículo en lavado puede finalizarse. Pasa a LISTO y libera el puesto, pero
+    // sigue en la cola (y ocupando lugar) hasta que se confirma el retiro.
+    const finalizarServicio = (atencionId: string) => {
+      const atencion = atenciones.find((a) => a.id === atencionId);
+      if (!atencion || !estaEnLavado(atencion.estado)) {
+        setToast("Solo se puede finalizar un vehículo que está en lavado.");
+        return;
+      }
+      setAtenciones((prev) =>
+        prev.map((a) =>
+          a.id === atencionId ? { ...a, estado: "LISTO", demoraMin: 0 } : a,
+        ),
+      );
+      setBoxes((prev) =>
+        prev.map((b) =>
+          b.atencionId === atencionId
+            ? { ...b, estado: "DISPONIBLE", atencionId: undefined }
+            : b,
+        ),
+      );
+      setToast(
+        `Servicio finalizado. WhatsApp enviado: el vehículo está listo para retirar. /seguimiento/${atencion.tokenSeguimiento}`,
+      );
+    };
+
     const crearReserva: AppActions["crearReserva"] = (payload) => {
       setReservas((prev) => [
         {
@@ -292,7 +362,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       avanzar,
       asignarBox,
       retirar,
+      finalizarServicio,
       crearReserva,
+      notificar: setToast,
       clearToast: () => setToast(null),
     };
   }, [user, clientes, vehiculos, boxes, atenciones, reservas, toast]);
