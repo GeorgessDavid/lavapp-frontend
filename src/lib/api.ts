@@ -163,6 +163,7 @@ export async function loginRequest(
       nombre: found.nombre,
       email: found.email,
       rol: found.rol,
+      lavaderoId: found.lavaderoId,
     };
     return { token: `mock.${user.id}.${user.rol}`, user };
   }
@@ -292,3 +293,48 @@ export function homeForRole(rol: Role) {
 }
 
 export const apiConfig = { API_URL, USE_MOCK };
+
+export type EstadoOrdenPuesto =
+  | "EN_ESPERA"
+  | "EN_PROGRESO"
+  | "LISTO"
+  | "ENTREGADO"
+  | "CANCELADO";
+
+export interface OrdenParaPuesto {
+  ordenId: number;
+  estado: EstadoOrdenPuesto;
+  patente: string;
+  modelo: string | null;
+  clienteNombre: string;
+  servicioNombre: string;
+  puestoId: number | null;
+}
+
+export async function listarOrdenesParaPuestos(lavaderoId: number) {
+  const estados: EstadoOrdenPuesto[] = [
+    "EN_ESPERA",
+    "EN_PROGRESO",
+    "LISTO",
+  ];
+
+  const resultados = await Promise.all(
+    estados.map((estado) =>
+      request<OrdenParaPuesto[]>(
+        `/lavaderos/${lavaderoId}/ordenes?estado=${estado}`,
+      ),
+    ),
+  );
+
+  return resultados.flat();
+}
+
+export function asignarPuestoApi(ordenId: number, puestoId: number) {
+  return request<{ id: number; puestoId: number | null }>(
+    `/ordenes/${ordenId}/asignar-puesto`,
+    {
+      method: "PATCH",
+      body: JSON.stringify({ puestoId }),
+    },
+  );
+}
