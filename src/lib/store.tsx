@@ -39,6 +39,7 @@ import {
   logoutRequest,
   setOnUnauthorized,
 } from "./api";
+import { tienePuestoAsignado } from "./box-assignment";
 import { estaEnLavado } from "./etapas";
 
 const STORAGE_KEY = "lavapp_session";
@@ -63,6 +64,7 @@ interface AppActions {
   checkIn: (payload: {
     patente: string;
     clienteId?: string;
+    vehiculoId?: string;
     clienteNombre: string;
     telefono: string;
     marca: string;
@@ -71,6 +73,7 @@ interface AppActions {
     observaciones?: string;
   }) => Atencion;
   avanzar: (atencionId: string) => void;
+  iniciarLavado: (atencionId: string) => boolean;
   asignarBox: (atencionId: string, boxId: string) => void;
   retirar: (atencionId: string) => void;
   finalizarServicio: (atencionId: string) => void;
@@ -162,16 +165,33 @@ export function AppProvider({ children }: { children: ReactNode }) {
     };
 
     const checkIn: AppActions["checkIn"] = (payload) => {
+      let vehiculo = payload.vehiculoId
+        ? vehiculos.find((v) => v.id === payload.vehiculoId)
+        : vehiculos.find(
+            (v) =>
+              v.patente.replace(/\s/g, "").toUpperCase() ===
+              payload.patente.replace(/\s/g, "").toUpperCase(),
+          );
+      if (payload.vehiculoId && !vehiculo) {
+        throw new Error("El vehículo seleccionado ya no está disponible.");
+      }
+
       let cliente = payload.clienteId
         ? clientes.find((c) => c.id === payload.clienteId)
-        : clientes.find(
-            (c) =>
-              `${c.nombre} ${c.apellido}`.toLowerCase() ===
-              payload.clienteNombre.toLowerCase(),
-          );
+        : vehiculo
+          ? clientes.find((c) => c.id === vehiculo!.clienteId)
+          : clientes.find(
+              (c) =>
+                `${c.nombre} ${c.apellido}`.toLowerCase() ===
+                payload.clienteNombre.toLowerCase(),
+            );
       if (payload.clienteId && !cliente) {
         throw new Error("El cliente seleccionado ya no está disponible.");
       }
+      if (vehiculo && cliente?.id !== vehiculo.clienteId) {
+        throw new Error("El vehículo no pertenece al cliente seleccionado.");
+      }
+
       if (!cliente) {
         const [nombre, ...rest] = payload.clienteNombre.split(" ");
         cliente = {
@@ -188,15 +208,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setClientes((prev) => [...prev, cliente!]);
       }
 
-      let vehiculo = vehiculos.find(
-        (v) =>
-          v.patente.replace(/\s/g, "").toUpperCase() ===
-          payload.patente.replace(/\s/g, "").toUpperCase(),
-      );
       if (!vehiculo) {
         vehiculo = {
           id: `v${Date.now()}`,
-          patente: payload.patente.toUpperCase(),
+          patente: payload.patente.trim().toUpperCase(),
           marca: payload.marca,
           modelo: payload.modelo,
           tipo: "Auto",
@@ -233,6 +248,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     };
 
     const avanzar = (atencionId: string) => {
+      const atencion = atenciones.find((item) => item.id === atencionId);
+      if (atencion?.estado === "EN_ESPERA") {
+        setToast("Asigná un puesto antes de iniciar el lavado.");
+        return;
+      }
+
       setAtenciones((prev) =>
         prev.map((a) => {
           if (a.id !== atencionId) return a;
@@ -259,6 +280,25 @@ export function AppProvider({ children }: { children: ReactNode }) {
       );
     };
 
+    const iniciarLavado: AppActions["iniciarLavado"] = (atencionId) => {
+      const atencion = atenciones.find((item) => item.id === atencionId);
+      if (!atencion || atencion.estado !== "EN_ESPERA") {
+        setToast("El vehículo ya no está en espera.");
+        return false;
+      }
+      if (!tienePuestoAsignado(atencion, boxes)) {
+        setToast("Asigná un puesto ocupado por este vehículo antes de iniciar el lavado.");
+        return false;
+      }
+
+      setAtenciones((prev) =>
+        prev.map((item) =>
+          item.id === atencionId ? { ...item, estado: "LAVADO" } : item,
+        ),
+      );
+      return true;
+    };
+
     const asignarBox = (atencionId: string, boxId: string) => {
       setBoxes((prev) =>
         prev.map((b) => {
@@ -272,13 +312,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setAtenciones((prev) =>
         prev.map((a) =>
           a.id === atencionId
-            ? { ...a, boxId, estado: a.estado === "EN_ESPERA" ? "LAVADO" : a.estado }
+            ? { ...a, boxId }
             : a,
         ),
       );
     };
 
     const retirar = (atencionId: string) => {
+      const atencion = atenciones.find((item) => item.id === atencionId);
+      if (!atencion || atencion.estado !== "LISTO") {
+        setToast("Solo se puede registrar el retiro cuando el vehículo está finalizado.");
+        return;
+      }
+
       setAtenciones((prev) =>
         prev.map((a) =>
           a.id === atencionId ? { ...a, estado: "RETIRADO" } : a,
@@ -347,6 +393,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       logout,
       checkIn,
       avanzar,
+      iniciarLavado,
       asignarBox,
       retirar,
       finalizarServicio,

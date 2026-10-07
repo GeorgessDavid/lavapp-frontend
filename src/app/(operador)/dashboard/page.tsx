@@ -7,10 +7,11 @@ import { Plate, StageBadge } from "@/components/ui/badges";
 import { useApp } from "@/lib/store";
 import { useLookups } from "@/lib/lookups";
 import { time } from "@/lib/format";
+import { tienePuestoAsignado } from "@/lib/box-assignment";
 import { CapacidadResumen } from "@/components/capacity/CapacidadResumen";
 
 export default function DashboardPage() {
-  const { atenciones, boxes, avanzar } = useApp();
+  const { atenciones, boxes, avanzar, iniciarLavado } = useApp();
   const { cliente, vehiculo, serviciosDe } = useLookups();
 
   const activas = atenciones.filter((a) => a.estado !== "RETIRADO");
@@ -99,7 +100,20 @@ export default function DashboardPage() {
                         <StageBadge estado={a.estado} />
                       </td>
                       <td>
-                        {a.estado !== "LISTO" ? (
+                        {a.estado === "EN_ESPERA" ? (
+                          <button
+                            className="text-xs font-semibold text-[#6C5CE7] disabled:cursor-not-allowed disabled:text-slate-400"
+                            disabled={!tienePuestoAsignado(a, boxes)}
+                            title={
+                              tienePuestoAsignado(a, boxes)
+                                ? "Iniciar el lavado del vehículo asignado"
+                                : "Asigná un puesto al vehículo antes de iniciar el lavado"
+                            }
+                            onClick={() => iniciarLavado(a.id)}
+                          >
+                            Iniciar lavado
+                          </button>
+                        ) : a.estado !== "LISTO" ? (
                           <button
                             className="text-xs font-semibold text-[#6C5CE7]"
                             onClick={() => avanzar(a.id)}
