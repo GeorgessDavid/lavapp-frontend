@@ -9,6 +9,18 @@ import { useLookups } from "@/lib/lookups";
 import { money, time } from "@/lib/format";
 import { LlegadaConReserva } from "@/components/LlegadaConReserva";
 
+type CampoIngreso =
+  | "vehiculo"
+  | "patente"
+  | "cliente"
+  | "nombre"
+  | "telefono"
+  | "marca"
+  | "modelo"
+  | "servicioId";
+
+type ErroresIngreso = Partial<Record<CampoIngreso, string>>;
+
 export default function IngresosPage() {
   const { atenciones, vehiculos, clientes, servicios, boxes, checkIn, user } = useApp();
   const lavaderoId = user?.lavaderoId ?? Number(process.env.NEXT_PUBLIC_LAVADERO_ID ?? "1");
@@ -18,7 +30,6 @@ export default function IngresosPage() {
   const [vehiculoId, setVehiculoId] = useState("");
   const [clienteId, setClienteId] = useState("");
   const [nuevoCliente, setNuevoCliente] = useState(false);
-  const [errorFormulario, setErrorFormulario] = useState<string | null>(null);
   const [patente, setPatente] = useState("");
   const [nombre, setNombre] = useState("");
   const [telefono, setTelefono] = useState("");
@@ -26,6 +37,21 @@ export default function IngresosPage() {
   const [modelo, setModelo] = useState("");
   const [servicioId, setServicioId] = useState("");
   const [obs, setObs] = useState("");
+  const [errores, setErrores] = useState<ErroresIngreso>({});
+  const [errorEnvio, setErrorEnvio] = useState("");
+  const [exito, setExito] = useState("");
+
+  function limpiarMensajeCampo(campo: CampoIngreso) {
+    setErrores((actuales) => {
+      if (!(campo in actuales)) return actuales;
+      const siguientes = { ...actuales };
+      delete siguientes[campo];
+      return siguientes;
+    });
+    setErrorEnvio("");
+    setExito("");
+  }
+
   const servicioSeleccionado = servicios.find((servicio) => servicio.id === servicioId);
 
   const vehiculoSeleccionado = vehiculos.find((v) => v.id === vehiculoId);
@@ -64,50 +90,97 @@ export default function IngresosPage() {
     setModelo("");
     setServicioId("");
     setObs("");
-    setErrorFormulario(null);
   }
 
   function onSubmit(e: FormEvent) {
     e.preventDefault();
-    setErrorFormulario(null);
+    setErrores({});
+    setErrorEnvio("");
+    setExito("");
+
+    const patenteFinal = (vehiculoSeleccionado?.patente ?? patente).trim().toUpperCase();
+    const patenteCompacta = patenteFinal.replace(/\s/g, "");
+    const clienteActual = vehiculoSeleccionado
+      ? clienteDelVehiculo
+      : clientes.find((c) => c.id === clienteId);
+    const nombreFinal = nuevoCliente
+      ? nombre.trim()
+      : clienteActual
+        ? `${clienteActual.nombre} ${clienteActual.apellido}`.trim()
+        : "";
+    const telefonoFinal = nuevoCliente ? telefono.trim() : clienteActual?.telefono ?? "";
+    const marcaFinal = vehiculoSeleccionado?.marca ?? marca.trim();
+    const modeloFinal = vehiculoSeleccionado?.modelo ?? modelo.trim();
+    const nuevosErrores: ErroresIngreso = {};
+    const hayVehiculo = modoVehiculo === "nuevo" || Boolean(vehiculoSeleccionado);
+    const hayCliente = nuevoCliente || Boolean(clienteActual);
+
     if (modoVehiculo === "existente" && !vehiculoSeleccionado) {
-      setErrorFormulario("Buscá y seleccioná un vehículo registrado.");
-      return;
+      nuevosErrores.vehiculo = "Buscá y seleccioná un vehículo registrado.";
     }
+    if (hayVehiculo) {
+      if (!patenteFinal) {
+        nuevosErrores.patente = "Ingresá la patente del vehículo.";
+      } else if (!/^(?:[A-Z]{2}\d{3}[A-Z]{2}|[A-Z]{3}\d{3})$/.test(patenteCompacta)) {
+        nuevosErrores.patente = "Ingresá una patente válida (por ejemplo, AB 123 CD o ABC 123).";
+      }
+    }
+    if (modoVehiculo === "nuevo" && !clienteActual && !nuevoCliente) {
+      nuevosErrores.cliente = "Seleccioná el cliente propietario.";
+    }
+    if (hayCliente && !nombreFinal) {
+      nuevosErrores.nombre = "Ingresá el nombre del cliente.";
+    }
+    const digitosTelefono = telefonoFinal.replace(/\D/g, "");
+    if (hayCliente && !telefonoFinal) {
+      nuevosErrores.telefono = "Ingresá el teléfono de contacto.";
+    } else if (hayCliente && (
+      !/^\+?[\d\s().-]+$/.test(telefonoFinal) ||
+      digitosTelefono.length < 8 ||
+      digitosTelefono.length > 15
+    )) {
+      nuevosErrores.telefono = "Ingresá un teléfono válido con entre 8 y 15 dígitos.";
+    }
+    if (hayVehiculo) {
+      if (!marcaFinal) {
+        nuevosErrores.marca = "Ingresá la marca del vehículo.";
+      }
+      if (!modeloFinal) {
+        nuevosErrores.modelo = "Ingresá el modelo del vehículo.";
+      }
+    }
+    if (!servicioId || !servicios.some((servicio) => servicio.id === servicioId)) {
+      nuevosErrores.servicioId = "Seleccioná un servicio válido.";
+    }
+
+    setErrores(nuevosErrores);
+    if (Object.keys(nuevosErrores).length > 0) return;
     if (modoVehiculo === "nuevo" && vehiculoConPatente) {
-      return;
-    }
-    if (modoVehiculo === "existente" && !clienteDelVehiculo) {
-      setErrorFormulario("No se encontró el cliente asociado a este vehículo.");
-      return;
-    }
-    if (modoVehiculo === "nuevo" && !nuevoCliente && !clienteId) {
-      setErrorFormulario("Seleccioná el cliente al que pertenece el vehículo.");
+      setErrorEnvio("Esta patente ya está registrada. Buscá y seleccioná el vehículo existente.");
       return;
     }
 
-    const clienteNuevoNombre = nombre.trim();
-    const clienteActual = clientes.find((c) => c.id === clienteId);
-    checkIn({
-      patente: vehiculoSeleccionado?.patente ?? patente.trim(),
-      vehiculoId: vehiculoSeleccionado?.id,
-      clienteId: vehiculoSeleccionado?.clienteId ?? (nuevoCliente ? undefined : clienteId),
-      clienteNombre: vehiculoSeleccionado
-        ? `${clienteDelVehiculo?.nombre ?? ""} ${clienteDelVehiculo?.apellido ?? ""}`.trim()
-        : nuevoCliente
-          ? clienteNuevoNombre
-          : `${clienteActual?.nombre ?? ""} ${clienteActual?.apellido ?? ""}`.trim(),
-      telefono: vehiculoSeleccionado?.clienteId
-        ? clienteDelVehiculo?.telefono ?? ""
-        : nuevoCliente
-          ? telefono.trim()
-          : clienteActual?.telefono ?? "",
-      marca: vehiculoSeleccionado?.marca ?? marca.trim(),
-      modelo: vehiculoSeleccionado?.modelo ?? modelo.trim(),
-      servicioId,
-      observaciones: obs,
-    });
-    limpiarFormulario();
+    try {
+      checkIn({
+        patente: patenteFinal,
+        vehiculoId: vehiculoSeleccionado?.id,
+        clienteId: vehiculoSeleccionado?.clienteId ?? (nuevoCliente ? undefined : clienteId),
+        clienteNombre: nombreFinal,
+        telefono: telefonoFinal,
+        marca: marcaFinal,
+        modelo: modeloFinal,
+        servicioId,
+        observaciones: obs,
+      });
+      limpiarFormulario();
+      setExito(`Ingreso registrado correctamente para ${patenteFinal}.`);
+    } catch (error) {
+      setErrorEnvio(
+        error instanceof Error
+          ? error.message
+          : "No se pudo registrar el ingreso. Revisá los datos e intentá nuevamente.",
+      );
+    }
   }
 
   const ocupacion = Math.round(
@@ -159,7 +232,23 @@ export default function IngresosPage() {
 
       <div className="grid gap-5 xl:grid-cols-[1.2fr_0.8fr]">
         <Card title="Ingreso sin reserva">
-          <form onSubmit={onSubmit} className="grid gap-4 sm:grid-cols-2">
+          <form noValidate onSubmit={onSubmit} className="grid gap-4 sm:grid-cols-2">
+            {errorEnvio && (
+              <p
+                role="alert"
+                className="sm:col-span-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
+              >
+                {errorEnvio}
+              </p>
+            )}
+            {exito && (
+              <p
+                role="status"
+                className="sm:col-span-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700"
+              >
+                {exito}
+              </p>
+            )}
             <div className="sm:col-span-2">
               <div className="mb-1.5 flex items-center justify-between gap-2">
                 <label className="text-xs font-semibold text-slate-500">Vehículo</label>
@@ -177,7 +266,9 @@ export default function IngresosPage() {
                     setModelo("");
                     setClienteId("");
                     setNuevoCliente(false);
-                    setErrorFormulario(null);
+                    setErrores({});
+                    setErrorEnvio("");
+                    setExito("");
                   }}
                 >
                   {modoVehiculo === "existente" ? "+ Registrar nuevo" : "Buscar existente"}
@@ -201,7 +292,7 @@ export default function IngresosPage() {
                       onClick={() => {
                         setVehiculoId("");
                         setBusquedaVehiculo("");
-                        setErrorFormulario(null);
+                        limpiarMensajeCampo("vehiculo");
                       }}
                     >
                       Cambiar vehículo
@@ -231,7 +322,7 @@ export default function IngresosPage() {
                                 className="w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-slate-50"
                                 onClick={() => {
                                   setVehiculoId(v.id);
-                                  setErrorFormulario(null);
+                                  limpiarMensajeCampo("vehiculo");
                                 }}
                               >
                                 <span className="font-semibold">
@@ -257,38 +348,59 @@ export default function IngresosPage() {
               ) : (
                 <div className="grid gap-3 sm:grid-cols-3">
                   <div>
-                    <label className="mb-1 block text-xs font-semibold text-slate-500">
+                    <label htmlFor="patente-ingreso" className="mb-1 block text-xs font-semibold text-slate-500">
                       Patente
                     </label>
                     <input
+                      id="patente-ingreso"
                       className="field uppercase"
                       placeholder="AB 123 CD"
                       value={patente}
-                      onChange={(e) => setPatente(e.target.value)}
+                      onChange={(e) => {
+                        setPatente(e.target.value);
+                        limpiarMensajeCampo("patente");
+                      }}
+                      aria-invalid={Boolean(errores.patente)}
+                      aria-describedby={errores.patente ? "patente-error" : undefined}
                       required
                     />
+                    {errores.patente && <p id="patente-error" className="mt-1 text-xs text-red-700">{errores.patente}</p>}
                   </div>
                   <div>
-                    <label className="mb-1 block text-xs font-semibold text-slate-500">
+                    <label htmlFor="marca-ingreso" className="mb-1 block text-xs font-semibold text-slate-500">
                       Marca
                     </label>
                     <input
+                      id="marca-ingreso"
                       className="field"
                       value={marca}
-                      onChange={(e) => setMarca(e.target.value)}
+                      onChange={(e) => {
+                        setMarca(e.target.value);
+                        limpiarMensajeCampo("marca");
+                      }}
+                      aria-invalid={Boolean(errores.marca)}
+                      aria-describedby={errores.marca ? "marca-error" : undefined}
                       required
                     />
+                    {errores.marca && <p id="marca-error" className="mt-1 text-xs text-red-700">{errores.marca}</p>}
                   </div>
                   <div>
-                    <label className="mb-1 block text-xs font-semibold text-slate-500">
+                    <label htmlFor="modelo-ingreso" className="mb-1 block text-xs font-semibold text-slate-500">
                       Modelo
                     </label>
                     <input
+                      id="modelo-ingreso"
                       className="field"
                       value={modelo}
-                      onChange={(e) => setModelo(e.target.value)}
+                      onChange={(e) => {
+                        setModelo(e.target.value);
+                        limpiarMensajeCampo("modelo");
+                      }}
+                      aria-invalid={Boolean(errores.modelo)}
+                      aria-describedby={errores.modelo ? "modelo-error" : undefined}
                       required
                     />
+                    {errores.modelo && <p id="modelo-error" className="mt-1 text-xs text-red-700">{errores.modelo}</p>}
                   </div>
                 </div>
               )}
@@ -308,6 +420,8 @@ export default function IngresosPage() {
                           setNuevoCliente(false);
                           setNombre("");
                           setTelefono("");
+                          limpiarMensajeCampo("nombre");
+                          limpiarMensajeCampo("telefono");
                         }}
                       >
                         Elegir existente
@@ -319,18 +433,30 @@ export default function IngresosPage() {
                         aria-label="Nombre y apellido del cliente"
                         placeholder="Nombre y apellido"
                         value={nombre}
-                        onChange={(e) => setNombre(e.target.value)}
+                        onChange={(e) => {
+                          setNombre(e.target.value);
+                          limpiarMensajeCampo("nombre");
+                        }}
+                        aria-invalid={Boolean(errores.nombre)}
+                        aria-describedby={errores.nombre ? "nombre-error" : undefined}
                         required
                       />
+                      {errores.nombre && <p id="nombre-error" className="mt-1 text-xs text-red-700">{errores.nombre}</p>}
                       <input
                         className="field"
                         type="tel"
                         aria-label="Teléfono del cliente"
                         placeholder="Teléfono / WhatsApp"
                         value={telefono}
-                        onChange={(e) => setTelefono(e.target.value)}
+                        onChange={(e) => {
+                          setTelefono(e.target.value);
+                          limpiarMensajeCampo("telefono");
+                        }}
+                        aria-invalid={Boolean(errores.telefono)}
+                        aria-describedby={errores.telefono ? "telefono-error" : undefined}
                         required
                       />
+                      {errores.telefono && <p id="telefono-error" className="mt-1 text-xs text-red-700">{errores.telefono}</p>}
                     </div>
                   </>
                 ) : (
@@ -350,6 +476,7 @@ export default function IngresosPage() {
                           setClienteId("");
                           setNombre("");
                           setTelefono("");
+                          limpiarMensajeCampo("cliente");
                         }}
                       >
                         + Registrar cliente nuevo
@@ -359,7 +486,12 @@ export default function IngresosPage() {
                       id="cliente-vehiculo"
                       className="field"
                       value={clienteId}
-                      onChange={(e) => setClienteId(e.target.value)}
+                      onChange={(e) => {
+                        setClienteId(e.target.value);
+                        limpiarMensajeCampo("cliente");
+                      }}
+                      aria-invalid={Boolean(errores.cliente)}
+                      aria-describedby={errores.cliente ? "cliente-error" : undefined}
                       required
                     >
                       <option value="">Seleccionar cliente</option>
@@ -369,6 +501,7 @@ export default function IngresosPage() {
                         </option>
                       ))}
                     </select>
+                    {errores.cliente && <p id="cliente-error" className="mt-1 text-xs text-red-700">{errores.cliente}</p>}
                   </>
                 )}
               </div>
@@ -386,16 +519,21 @@ export default function IngresosPage() {
                     setModoVehiculo("existente");
                     setBusquedaVehiculo(vehiculoConPatente.patente);
                     setVehiculoId("");
-                    setErrorFormulario(null);
+                    limpiarMensajeCampo("vehiculo");
                   }}
                 >
                   Buscar {vehiculoConPatente.patente}
                 </button>
               </div>
             )}
-            {errorFormulario && (
+            {errores.vehiculo && (
               <p role="alert" className="sm:col-span-2 rounded-xl bg-red-50 p-3 text-sm text-red-700">
-                {errorFormulario}
+                {errores.vehiculo}
+              </p>
+            )}
+            {modoVehiculo === "existente" && errores.cliente && (
+              <p role="alert" className="sm:col-span-2 rounded-xl bg-red-50 p-3 text-sm text-red-700">
+                {errores.cliente}
               </p>
             )}
             <div className="sm:col-span-2">
@@ -405,7 +543,12 @@ export default function IngresosPage() {
               <select
                 className="field"
                 value={servicioId}
-                onChange={(e) => setServicioId(e.target.value)}
+                onChange={(e) => {
+                  setServicioId(e.target.value);
+                  limpiarMensajeCampo("servicioId");
+                }}
+                aria-invalid={Boolean(errores.servicioId)}
+                aria-describedby={errores.servicioId ? "servicio-error" : undefined}
                 required
               >
                 <option value="">Seleccionar servicio</option>
@@ -415,6 +558,7 @@ export default function IngresosPage() {
                   </option>
                 ))}
               </select>
+              {errores.servicioId && <p id="servicio-error" className="mt-1 text-xs text-red-700">{errores.servicioId}</p>}
               {servicioSeleccionado && (
                 <div
                   aria-live="polite"
