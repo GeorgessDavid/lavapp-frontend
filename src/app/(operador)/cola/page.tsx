@@ -7,6 +7,7 @@ import { Plate, StageBadge } from "@/components/ui/badges";
 import { useApp } from "@/lib/store";
 import { useLookups } from "@/lib/lookups";
 import { time, timeWithSeconds } from "@/lib/format";
+import { tienePuestoAsignado } from "@/lib/box-assignment";
 import { ApiError, apiConfig, fetchOrdenes, finalizarServicioApi } from "@/lib/api";
 import { estaEnLavado, tieneEtapaIntermedia } from "@/lib/etapas";
 import {
@@ -34,6 +35,7 @@ export default function ColaPage() {
     atenciones,
     boxes,
     avanzar,
+    iniciarLavado,
     asignarBox,
     retirar,
     finalizarServicio,
@@ -225,13 +227,30 @@ export default function ColaPage() {
     const { estado } = fila;
     return (
       <>
-        {a?.estado === "EN_ESPERA" && libres[0] && (
-          <button
-            className="text-xs font-semibold text-[#6C5CE7]"
-            onClick={() => asignarBox(a.id, libres[0].id)}
-          >
-            Asignar puesto
-          </button>
+        {a?.estado === "EN_ESPERA" && (
+          <>
+            {!tienePuestoAsignado(a, boxes) && libres[0] && (
+              <button
+                className="text-xs font-semibold text-[#6C5CE7]"
+                onClick={() => asignarBox(a.id, libres[0].id)}
+              >
+                Asignar puesto
+              </button>
+            )}
+            <button
+              type="button"
+              className="text-xs font-semibold text-[#6C5CE7] disabled:cursor-not-allowed disabled:text-slate-400"
+              disabled={!tienePuestoAsignado(a, boxes)}
+              title={
+                tienePuestoAsignado(a, boxes)
+                  ? "Iniciar el lavado del vehículo asignado"
+                  : "Asigná un puesto al vehículo antes de iniciar el lavado"
+              }
+              onClick={() => iniciarLavado(a.id)}
+            >
+              Iniciar lavado
+            </button>
+          </>
         )}
         {a && tieneEtapaIntermedia(a.estado) && (
           <button
