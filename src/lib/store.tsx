@@ -62,6 +62,7 @@ interface AppActions {
   logout: () => Promise<void>;
   checkIn: (payload: {
     patente: string;
+    clienteId?: string;
     clienteNombre: string;
     telefono: string;
     marca: string;
@@ -161,11 +162,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
     };
 
     const checkIn: AppActions["checkIn"] = (payload) => {
-      let cliente = clientes.find(
-        (c) =>
-          `${c.nombre} ${c.apellido}`.toLowerCase() ===
-          payload.clienteNombre.toLowerCase(),
-      );
+      let cliente = payload.clienteId
+        ? clientes.find((c) => c.id === payload.clienteId)
+        : clientes.find(
+            (c) =>
+              `${c.nombre} ${c.apellido}`.toLowerCase() ===
+              payload.clienteNombre.toLowerCase(),
+          );
+      if (payload.clienteId && !cliente) {
+        throw new Error("El cliente seleccionado ya no está disponible.");
+      }
       if (!cliente) {
         const [nombre, ...rest] = payload.clienteNombre.split(" ");
         cliente = {
@@ -362,4 +368,3 @@ export function useApp() {
   if (!ctx) throw new Error("useApp debe usarse dentro de AppProvider");
   return ctx;
 }
-
