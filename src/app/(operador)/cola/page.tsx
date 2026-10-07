@@ -157,6 +157,119 @@ export default function ColaPage() {
   const totales = contarCola(filas);
   const enEspera = filas.filter(esperando);
   const esperandoPrimeraCarga = !apiConfig.USE_MOCK && ordenesBackend === null && !errorBackend;
+  const mensajeVacio = esperandoPrimeraCarga
+    ? "Consultando la cola..."
+    : filas.length === 0
+      ? "La cola está vacía: no hay vehículos esperando."
+      : null;
+
+  // Lo que se muestra de cada fila, igual en la tabla y en las tarjetas del celular: una orden
+  // del backend ya trae todo; una atención local se completa con los catálogos de la demo.
+  const describir = (fila: FilaCola) => {
+    const a = fila.tipo === "local" ? fila.atencion : null;
+    const orden = fila.tipo === "backend" ? fila.orden : null;
+    const v = a ? vehiculos.find((vehiculo) => vehiculo.id === a.vehiculoId) : null;
+    const c = a ? clientes.find((cliente) => cliente.id === a.clienteId) : null;
+    const reservaConfirmada = a ? obtenerReservaConfirmada(a, reservas) : null;
+    return {
+      id: idDeFila(fila),
+      posicion: fila.posicion,
+      estado: fila.estado,
+      origen: orden?.tipoIngreso ?? (reservaConfirmada ? "RESERVA" : "ESPONTANEO"),
+      horarioReserva:
+        orden?.horarioReserva ??
+        (reservaConfirmada
+          ? new Date(fechaHoraReserva(reservaConfirmada)).toISOString()
+          : null),
+      ingreso: orden?.ingreso ?? a?.fechaIngreso ?? null,
+      horaEstimada: a?.horaEstimadaInicio ?? null,
+      patente: orden?.patente ?? v?.patente ?? "—",
+      modelo: orden?.modelo ?? `${v?.marca ?? ""} ${v?.modelo ?? ""}`.trim(),
+      cliente:
+        orden?.clienteNombre ?? (`${c?.nombre ?? ""} ${c?.apellido ?? ""}`.trim() || "—"),
+      servicio: orden?.servicioNombre ?? (a ? serviciosDe(a.servicioIds) : "—"),
+    };
+  };
+
+  const etiquetaOrigen = (origen: string) => (
+    <span
+      className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold ${
+        origen === "RESERVA" ? "bg-violet-100 text-violet-800" : "bg-slate-100 text-slate-600"
+      }`}
+    >
+      {origen === "RESERVA" ? (
+        <CalendarClock className="h-3.5 w-3.5" />
+      ) : (
+        <Car className="h-3.5 w-3.5" />
+      )}
+      {origen === "RESERVA" ? "Reserva" : "Espontáneo"}
+    </span>
+  );
+
+  const turnoOIngreso = (horarioReserva: string | null, ingreso: string | null) =>
+    horarioReserva ? (
+      <span className="inline-flex items-center gap-1 font-semibold text-violet-700">
+        <CalendarClock className="h-3.5 w-3.5" />
+        {time(horarioReserva)}
+      </span>
+    ) : ingreso ? (
+      <span className="text-slate-500">Ingresó {time(ingreso)}</span>
+    ) : (
+      "—"
+    );
+
+  const acciones = (fila: FilaCola) => {
+    const a = fila.tipo === "local" ? fila.atencion : null;
+    const orden = fila.tipo === "backend" ? fila.orden : null;
+    const rowId = idDeFila(fila);
+    const { estado } = fila;
+    return (
+      <>
+        {a?.estado === "EN_ESPERA" && libres[0] && (
+          <button
+            className="text-xs font-semibold text-[#6C5CE7]"
+            onClick={() => asignarBox(a.id, libres[0].id)}
+          >
+            Asignar puesto
+          </button>
+        )}
+        {a && tieneEtapaIntermedia(a.estado) && (
+          <button
+            className="text-xs font-semibold text-[#6C5CE7]"
+            onClick={() => avanzar(a.id)}
+          >
+            Siguiente etapa
+          </button>
+        )}
+        {estado !== "LISTO" && estado !== "RETIRADO" && (
+          <button
+            type="button"
+            className="text-xs font-semibold text-emerald-600 disabled:cursor-not-allowed disabled:text-slate-300"
+            disabled={!estaEnLavado(estado) || finalizando === rowId}
+            title={
+              estaEnLavado(estado)
+                ? "Marca el lavado como terminado: el vehículo queda listo para retirar"
+                : "Solo se puede finalizar un vehículo que está en lavado"
+            }
+            onClick={() => void finalizar(fila)}
+          >
+            {finalizando === rowId ? "Finalizando..." : "Finalizar servicio"}
+          </button>
+        )}
+        {a?.estado === "LISTO" && (
+          <button
+            className="text-xs font-semibold text-emerald-600"
+            onClick={() => retirar(a.id)}
+          >
+            Confirmar retiro
+          </button>
+        )}
+        {orden?.estado === "LISTO" && (
+          <span className="text-xs text-slate-400">Esperando retiro</span>
+        )}
+      </>
+    );
+  };
 
   return (
     <div className="space-y-5">
@@ -167,7 +280,7 @@ export default function ColaPage() {
         </p>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
         <KpiCard
           label="En espera"
           value={totales.enEspera}
@@ -237,185 +350,116 @@ export default function ColaPage() {
               </button>
             </p>
           )}
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-slate-100">
-                {[
-                  "Posición",
-                  "Origen",
-                  "Patente",
-                  "Cliente",
-                  "Servicio",
-                  "Turno / ingreso",
-                  "Estado",
-                  "Acción",
-                ].map(
-                  (h) => (
+          {/* Escritorio: la tabla. Celular: una tarjeta por vehículo con los mismos datos. */}
+          <div className="hidden overflow-x-auto md:block">
+            <table className="w-full min-w-[640px] text-sm">
+              <thead>
+                <tr className="border-b border-slate-100">
+                  {[
+                    "Posición",
+                    "Origen",
+                    "Patente",
+                    "Cliente",
+                    "Servicio",
+                    "Turno / ingreso",
+                    "Estado",
+                    "Acción",
+                  ].map((h) => (
                     <th key={h} className="table-head pb-3">
                       {h}
                     </th>
-                  ),
-                )}
-              </tr>
-            </thead>
-            <tbody>
-              {esperandoPrimeraCarga && (
-                <tr>
-                  <td colSpan={8} className="py-8 text-center text-sm text-slate-400">
-                    Consultando la cola...
-                  </td>
+                  ))}
                 </tr>
-              )}
-              {!esperandoPrimeraCarga && filas.length === 0 && (
-                <tr>
-                  <td colSpan={8} className="py-8 text-center text-sm text-slate-500">
-                    La cola está vacía: no hay vehículos esperando.
-                  </td>
-                </tr>
-              )}
-              {filas.map((fila) => {
-                const a = fila.tipo === "local" ? fila.atencion : null;
-                const orden = fila.tipo === "backend" ? fila.orden : null;
-                const v = a
-                  ? vehiculos.find((vehiculo) => vehiculo.id === a.vehiculoId)
-                  : null;
-                const c = a
-                  ? clientes.find((cliente) => cliente.id === a.clienteId)
-                  : null;
-                const reservaConfirmada = a
-                  ? obtenerReservaConfirmada(a, reservas)
-                  : null;
-                const origen =
-                  orden?.tipoIngreso ??
-                  (reservaConfirmada ? "RESERVA" : "ESPONTANEO");
-                const horarioReserva =
-                  orden?.horarioReserva ??
-                  (reservaConfirmada
-                    ? new Date(fechaHoraReserva(reservaConfirmada)).toISOString()
-                    : null);
-                const ingreso = orden?.ingreso ?? a?.fechaIngreso;
-                const rowId = idDeFila(fila);
-                const { estado } = fila;
-                return (
-                  <tr key={rowId} className="border-b border-slate-50">
-                    <td className="py-3 font-semibold text-slate-400">{fila.posicion ?? "—"}</td>
-                    <td>
-                      <span
-                        className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold ${
-                          origen === "RESERVA"
-                            ? "bg-violet-100 text-violet-800"
-                            : "bg-slate-100 text-slate-600"
-                        }`}
-                      >
-                        {origen === "RESERVA" ? (
-                          <CalendarClock className="h-3.5 w-3.5" />
-                        ) : (
-                          <Car className="h-3.5 w-3.5" />
-                        )}
-                        {origen === "RESERVA" ? "Reserva" : "Espontáneo"}
-                      </span>
-                    </td>
-                    <td>
-                      <Plate value={orden?.patente ?? v?.patente ?? "—"} />
-                    </td>
-                    <td>
-                      {orden?.clienteNombre ??
-                        (`${c?.nombre ?? ""} ${c?.apellido ?? ""}`.trim() || "—")}
-                    </td>
-                    <td className="text-slate-500">
-                      {orden?.servicioNombre ?? (a ? serviciosDe(a.servicioIds) : "—")}
-                    </td>
-                    <td>
-                      {horarioReserva ? (
-                        <span className="inline-flex items-center gap-1 font-semibold text-violet-700">
-                          <CalendarClock className="h-3.5 w-3.5" />
-                          {time(horarioReserva)}
-                        </span>
-                      ) : ingreso ? (
-                        <span className="text-slate-500">Ingresó {time(ingreso)}</span>
-                      ) : "—"}
-                    </td>
-                    <td>
-                      <StageBadge estado={estado} />
-                    </td>
-                    <td className="space-x-2">
-                      {a?.estado === "EN_ESPERA" && libres[0] && (
-                        <button
-                          className="text-xs font-semibold text-[#6C5CE7]"
-                          onClick={() => asignarBox(a.id, libres[0].id)}
-                        >
-                          Asignar puesto
-                        </button>
-                      )}
-                      {a && tieneEtapaIntermedia(a.estado) && (
-                        <button
-                          className="text-xs font-semibold text-[#6C5CE7]"
-                          onClick={() => avanzar(a.id)}
-                        >
-                          Siguiente etapa
-                        </button>
-                      )}
-                      {estado !== "LISTO" && estado !== "RETIRADO" && (
-                        <button
-                          type="button"
-                          className="text-xs font-semibold text-emerald-600 disabled:cursor-not-allowed disabled:text-slate-300"
-                          disabled={!estaEnLavado(estado) || finalizando === rowId}
-                          title={
-                            estaEnLavado(estado)
-                              ? "Marca el lavado como terminado: el vehículo queda listo para retirar"
-                              : "Solo se puede finalizar un vehículo que está en lavado"
-                          }
-                          onClick={() => void finalizar(fila)}
-                        >
-                          {finalizando === rowId ? "Finalizando..." : "Finalizar servicio"}
-                        </button>
-                      )}
-                      {a?.estado === "LISTO" && (
-                        <button
-                          className="text-xs font-semibold text-emerald-600"
-                          onClick={() => retirar(a.id)}
-                        >
-                          Confirmar retiro
-                        </button>
-                      )}
-                      {orden?.estado === "LISTO" && (
-                        <span className="text-xs text-slate-400">Esperando retiro</span>
-                      )}
+              </thead>
+              <tbody>
+                {mensajeVacio && (
+                  <tr>
+                    <td colSpan={8} className="py-8 text-center text-sm text-slate-500">
+                      {mensajeVacio}
                     </td>
                   </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                )}
+                {filas.map((fila) => {
+                  const d = describir(fila);
+                  return (
+                    <tr key={d.id} className="border-b border-slate-50">
+                      <td className="py-3 font-semibold text-slate-400">{d.posicion ?? "—"}</td>
+                      <td>{etiquetaOrigen(d.origen)}</td>
+                      <td>
+                        <Plate value={d.patente} />
+                      </td>
+                      <td>{d.cliente}</td>
+                      <td className="text-slate-500">{d.servicio}</td>
+                      <td>{turnoOIngreso(d.horarioReserva, d.ingreso)}</td>
+                      <td>
+                        <StageBadge estado={d.estado} />
+                      </td>
+                      <td className="space-x-2">{acciones(fila)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <ul className="space-y-3 md:hidden">
+            {mensajeVacio && (
+              <li className="rounded-xl bg-slate-50 px-3 py-6 text-center text-sm text-slate-500">
+                {mensajeVacio}
+              </li>
+            )}
+            {filas.map((fila) => {
+              const d = describir(fila);
+              return (
+                <li
+                  key={d.id}
+                  data-cola-tarjeta
+                  className="rounded-xl border border-slate-100 bg-slate-50 p-3"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <span
+                        className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-white text-xs font-bold text-slate-500"
+                        title={d.posicion ? `Posición ${d.posicion} en la cola` : "No está en la cola"}
+                      >
+                        {d.posicion ?? "—"}
+                      </span>
+                      <Plate value={d.patente} />
+                    </div>
+                    <StageBadge estado={d.estado} />
+                  </div>
+                  <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 text-xs">
+                    <div>
+                      <dt className="text-slate-400">Cliente</dt>
+                      <dd className="font-medium text-slate-700">{d.cliente}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-slate-400">Servicio</dt>
+                      <dd className="font-medium text-slate-700">{d.servicio}</dd>
+                    </div>
+                    <div>{etiquetaOrigen(d.origen)}</div>
+                    <div className="self-center">{turnoOIngreso(d.horarioReserva, d.ingreso)}</div>
+                  </dl>
+                  <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1">{acciones(fila)}</div>
+                </li>
+              );
+            })}
+          </ul>
         </Card>
 
         <Card title="Próximos servicios">
           <ul className="space-y-3">
             {enEspera.map((fila) => {
-              const orden = fila.tipo === "backend" ? fila.orden : null;
-              const a = fila.tipo === "local" ? fila.atencion : null;
-              const v = a ? vehiculos.find((vehiculo) => vehiculo.id === a.vehiculoId) : null;
-              const reservaConfirmada = a
-                ? obtenerReservaConfirmada(a, reservas)
-                : null;
-              const origen =
-                orden?.tipoIngreso ?? (reservaConfirmada ? "RESERVA" : "ESPONTANEO");
-              const horario =
-                orden?.horarioReserva ??
-                (reservaConfirmada
-                  ? new Date(fechaHoraReserva(reservaConfirmada)).toISOString()
-                  : a?.horaEstimadaInicio);
+              const d = describir(fila);
+              const horario = d.horarioReserva ?? d.horaEstimada;
               return (
                 <li
-                  key={idDeFila(fila)}
+                  key={d.id}
                   className="flex items-center justify-between rounded-xl bg-slate-50 px-3 py-3"
                 >
                   <div>
-                    <p className="text-sm font-semibold">
-                      {orden?.modelo ?? `${v?.marca ?? ""} ${v?.modelo ?? ""}`.trim()}
-                    </p>
+                    <p className="text-sm font-semibold">{d.modelo}</p>
                     <p className="text-xs text-slate-500">
-                      {orden?.patente ?? v?.patente} · {origen === "RESERVA" ? "Reserva confirmada" : "Sin turno"}
+                      {d.patente} · {d.origen === "RESERVA" ? "Reserva confirmada" : "Sin turno"}
                     </p>
                   </div>
                   <span className="text-xs font-semibold text-[#6C5CE7]">

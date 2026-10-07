@@ -15,6 +15,7 @@ import {
   LockKeyhole,
   LayoutDashboard,
   LogOut,
+  Menu,
   ParkingCircle,
   Search,
   Users,
@@ -54,6 +55,9 @@ export function AppShell({ children }: { children: ReactNode }) {
   const [now, setNow] = useState(clock());
   const [plan, setPlan] = useState<PlanActual | null>(null);
   const [planError, setPlanError] = useState("");
+  // En celular la barra lateral es un cajón que se abre desde el encabezado; en escritorio es
+  // la columna fija de siempre. Se cierra al elegir una sección.
+  const [menuAbierto, setMenuAbierto] = useState(false);
 
   useEffect(() => {
     if (!user) router.replace("/login");
@@ -117,7 +121,19 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   return (
     <div className="flex min-h-screen bg-surface">
-      <aside className="sticky top-0 flex h-screen w-[232px] shrink-0 flex-col bg-navy px-4 py-5 text-white">
+      {menuAbierto && (
+        <div
+          className="fixed inset-0 z-30 bg-navy/40 md:hidden"
+          aria-hidden="true"
+          onClick={() => setMenuAbierto(false)}
+        />
+      )}
+      <aside
+        className={`fixed inset-y-0 left-0 z-40 flex h-screen w-[232px] shrink-0 flex-col bg-navy px-4 py-5 text-white transition-transform md:sticky md:top-0 md:translate-x-0 ${
+          menuAbierto ? "translate-x-0" : "-translate-x-full"
+        }`}
+        aria-label="Menú principal"
+      >
         <Logo light />
         <nav className="mt-8 flex flex-1 flex-col gap-1">
           {items.map((item) => {
@@ -149,6 +165,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               <Link
                 key={item.href}
                 href={item.href}
+                onClick={() => setMenuAbierto(false)}
                 className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition ${
                   active
                     ? "bg-white/12 text-white"
@@ -184,11 +201,20 @@ export function AppShell({ children }: { children: ReactNode }) {
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex items-center justify-between gap-4 px-6 py-4">
-          <p className="text-xs capitalize text-slate-400">
+        <header className="flex items-center justify-between gap-3 px-4 py-4 md:gap-4 md:px-6">
+          <button
+            type="button"
+            className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-white text-navy shadow-sm md:hidden"
+            aria-label={menuAbierto ? "Cerrar menú" : "Abrir menú"}
+            aria-expanded={menuAbierto}
+            onClick={() => setMenuAbierto((abierto) => !abierto)}
+          >
+            <Menu className="h-4 w-4" />
+          </button>
+          <p className="hidden text-xs capitalize text-slate-400 lg:block">
             {todayLabel()} · {now}
           </p>
-          <div className="flex max-w-lg flex-1 items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm text-slate-400">
+          <div className="hidden max-w-lg flex-1 items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm text-slate-400 sm:flex">
             <Search className="h-4 w-4" />
             <input
               className="w-full bg-transparent outline-none"
@@ -210,7 +236,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                   .join("")
                   .slice(0, 2)}
               </span>
-              <div className="leading-tight">
+              <div className="hidden leading-tight sm:block">
                 <p className="text-xs font-semibold text-navy">{user.nombre}</p>
                 <p className="text-[10px] text-slate-400">
                   {user.rol === "DUENO" ? "Dueño" : "Operador"}
@@ -219,7 +245,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             </div>
           </div>
         </header>
-        <main className="flex-1 px-6 pb-8">{children}</main>
+        <main className="flex-1 px-4 pb-8 md:px-6">{children}</main>
       </div>
 
       {toast && (
