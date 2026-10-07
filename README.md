@@ -1,3 +1,64 @@
+# LavApp | Front-end
+
+## Conectar con el back-end
+
+Por defecto la app corre en **modo demo** con datos mock (sin backend). Para usar la API real:
+
+```bash
+cp .env.example .env.local      # NEXT_PUBLIC_USE_MOCK=false y NEXT_PUBLIC_API_URL
+pnpm install
+pnpm dev                        # http://localhost:3000
+```
+
+El backend tiene que estar corriendo (ver `lavapp-backend/README.md`: MySQL + Redis con
+`docker compose up -d` y `mvnw spring-boot:run`) con un usuario cargado en `usuarios`; cómo
+crearlo está explicado en ese README. No se versionan credenciales de prueba.
+
+### Autenticación
+
+La sesión es una cookie `LAVAPP_SESSION` (HttpOnly) que emite el backend; el front no guarda
+tokens. Todas las requests van con `credentials: "include"`.
+
+- Login: `POST /auth/authenticate` → usuario `{ id, email, rol, lavaderoId }`.
+- Al cargar la app: `GET /auth/me` confirma la sesión (401 → vuelve al login).
+- Cerrar sesión: `POST /auth/logout`.
+- Cualquier 401 posterior (sesión expirada, usuario desactivado) cierra la sesión local.
+
+Los roles del backend se mapean a los del front: `DUENO_LAVADERO` y `ADMIN_LAVAPP` → `DUENO`;
+`ENCARGADO` y `EMPLEADO` → `OPERADOR`. `FLOTA` existe solo en el modo demo.
+
+Abrir siempre `http://localhost:3000` (no `127.0.0.1`): el backend habilita ese origen para CORS
+con credenciales (`FRONTEND_ORIGINS`) y la cookie `SameSite=Lax` requiere el mismo sitio.
+
+| Variable                | Default                 | Descripción                               |
+|-------------------------|-------------------------|-------------------------------------------|
+| `NEXT_PUBLIC_USE_MOCK`  | `true`                  | `false` para usar la API real             |
+| `NEXT_PUBLIC_API_URL`   | `http://localhost:8080` | URL base del back-end                     |
+
+## Cola de vehículos
+
+`/cola` muestra lo que dice el backend (`GET /lavaderos/{id}/ordenes?estado=`): primero los
+vehículos en espera, en el orden priorizado que devuelve la API y numerados por su posición,
+después los que están en lavado y los listos para retirar. En modo demo usa los datos mock.
+
+La cola se mantiene al día sola: se vuelve a pedir después de cada acción hecha desde la
+pantalla, cada 10 segundos mientras la pestaña está visible y al volver a ella. Hay un botón
+"Actualizar" con la hora de la última consulta. Si el backend falla se conserva la última cola
+vista, se avisa y se puede reintentar.
+
+## Pruebas
+
+```bash
+pnpm test
+```
+
+Corre las pruebas de los módulos puros de `src/lib` (armado de la cola, etapas y priorización
+por reservas) con el runner de Node, que ejecuta el TypeScript sin compilar. Requiere **Node 22.18
+o superior**. Por eso los módulos de `src/lib` se importan entre sí con extensión (`./etapas.ts`):
+Node no resuelve imports sin extensión.
+
+---
+
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
 ## Getting Started
