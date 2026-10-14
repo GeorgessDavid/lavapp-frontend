@@ -4,6 +4,8 @@ import { useMemo } from "react";
 import { useParams } from "next/navigation";
 import { Star } from "lucide-react";
 import { Logo } from "@/components/brand/Logo";
+import { SeguimientoCliente } from "@/components/seguimiento/SeguimientoCliente";
+import { apiConfig } from "@/lib/api";
 import { useApp } from "@/lib/store";
 import { stageLabel, time } from "@/lib/format";
 import type { ServiceStage } from "@/lib/types";
@@ -17,6 +19,16 @@ const pipeline: ServiceStage[] = [
 ];
 
 export default function SeguimientoPage() {
+  const params = useParams<{ token: string }>();
+  const codigo = String(params.token);
+  // El modo es fijo para todo el build (NEXT_PUBLIC_USE_MOCK). En modo real la página es pública:
+  // no usa el store ni la sesión, el cliente entra solo con el código de su link (HU-43).
+  if (apiConfig.USE_MOCK) return <SeguimientoDemo />;
+  return <SeguimientoCliente key={codigo} codigo={codigo} />;
+}
+
+/** El seguimiento del modo demo, armado con los datos mock del store. */
+function SeguimientoDemo() {
   const params = useParams<{ token: string }>();
   const { atenciones, vehiculos, clientes, promociones } = useApp();
 
