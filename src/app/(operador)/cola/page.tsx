@@ -537,7 +537,10 @@ export default function ColaPage() {
                       <td>
                         <StageBadge estado={d.estado} />
                       </td>
-                      <td className="space-x-2">{acciones(fila)}</td>
+                      <td>
+                        {/* Con las flechas y "Demora" las acciones ya no entran en una línea. */}
+                        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">{acciones(fila)}</div>
+                      </td>
                     </tr>
                   );
                 })}
