@@ -26,6 +26,11 @@ type Carga =
 const cargaFallida = (error: unknown): Carga =>
   error instanceof ApiError && error.status === 404 ? { tipo: "inexistente" } : { tipo: "error" };
 
+const CALIFICACION_GUARDADA: AvisoCalificacion = {
+  tipo: "exito",
+  mensaje: "¡Gracias! Guardamos tu calificación.",
+};
+
 const fecha = (iso: string) =>
   new Date(iso).toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit" });
 
@@ -68,7 +73,7 @@ export function SeguimientoCliente({ codigo }: { codigo: string }) {
           }
         : actual,
     );
-    setAviso({ tipo: "exito", mensaje: "¡Gracias! Guardamos tu calificación." });
+    setAviso(CALIFICACION_GUARDADA);
   }
 
   // Tras un envío rechazado o sin respuesta se relee la orden, en segundo plano, para mostrar lo que
@@ -76,7 +81,11 @@ export function SeguimientoCliente({ codigo }: { codigo: string }) {
   function desactualizada(motivo: string | null) {
     setAviso(motivo ? { tipo: "conflicto", mensaje: motivo } : null);
     fetchSeguimiento(codigo)
-      .then((seguimiento) => setCarga({ tipo: "listo", seguimiento }))
+      .then((seguimiento) => {
+        setCarga({ tipo: "listo", seguimiento });
+        // Un envío que se quedó sin respuesta pero sí se guardó se confirma como cualquier otro.
+        if (!motivo && seguimiento.calificacion) setAviso(CALIFICACION_GUARDADA);
+      })
       .catch(() => {
         // La tarjeta ya muestra el error del envío; no hay nada más que avisar.
       });
