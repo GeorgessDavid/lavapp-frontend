@@ -1,7 +1,17 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertTriangle, CalendarClock, Car, Clock, Droplets, Sparkles } from "lucide-react";
+import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  AlertTriangle,
+  CalendarClock,
+  Car,
+  ChevronDown,
+  ChevronUp,
+  Clock,
+  Droplets,
+  Sparkles,
+  Timer,
+} from "lucide-react";
 import { Card, KpiCard } from "@/components/ui/Card";
 import { Plate, StageBadge } from "@/components/ui/badges";
 import { useApp } from "@/lib/store";
@@ -9,6 +19,21 @@ import { useLookups } from "@/lib/lookups";
 import { time, timeWithSeconds } from "@/lib/format";
 import { tienePuestoAsignado } from "@/lib/box-assignment";
 import { ApiError, apiConfig, fetchOrdenes, finalizarServicioApi } from "@/lib/api";
+import {
+  fetchTiemposCola,
+  moverEnCola,
+  registrarDemora,
+  type TiempoEstimadoApi,
+} from "@/lib/api-cola";
+import {
+  DEMORA_MAX,
+  DEMORA_MIN,
+  MOTIVO_MAX,
+  indexarTiempos,
+  mensajeDemora,
+  posicionDestino,
+  validarDemora,
+} from "@/lib/cola-operativa";
 import { estaEnLavado, tieneEtapaIntermedia } from "@/lib/etapas";
 import {
   armarFilasBackend,
@@ -52,6 +77,12 @@ export default function ColaPage() {
   const [finalizando, setFinalizando] = useState<string | null>(null);
   const [errorBackend, setErrorBackend] = useState("");
   const [cargandoBackend, setCargandoBackend] = useState(false);
+  // HU-28: tiempos estimados por orden. Si esa consulta falla, la cola se muestra igual sin ellos.
+  const [tiempos, setTiempos] = useState<Map<number, TiempoEstimadoApi>>(() => new Map());
+  // HU-16: la fila que se está moviendo; mientras tanto no se acepta otro movimiento.
+  const [moviendo, setMoviendo] = useState<string | null>(null);
+  // HU-28: la orden a la que se le está registrando una demora (abre el diálogo).
+  const [demoraPara, setDemoraPara] = useState<{ ordenId: number; patente: string } | null>(null);
   const lavaderoId = user?.lavaderoId;
   const libres = boxes.filter((b) => b.estado === "DISPONIBLE");
   const activas = atenciones.filter((a) => a.estado !== "RETIRADO");
@@ -76,12 +107,14 @@ export default function ColaPage() {
 
     setCargandoBackend(true);
     try {
-      const [enEspera, enLavado, listas] = await Promise.all([
+      const [enEspera, enLavado, listas, tiemposApi] = await Promise.all([
         fetchOrdenes(lavaderoId, "EN_ESPERA"),
         fetchOrdenes(lavaderoId, "EN_PROGRESO"),
         fetchOrdenes(lavaderoId, "LISTO"),
+        fetchTiemposCola(lavaderoId).catch(() => null),
       ]);
       setOrdenesBackend({ enEspera, enLavado, listas });
+      setTiempos(indexarTiempos(tiemposApi ?? []));
       setActualizadoEl(new Date().toISOString());
       setErrorBackend("");
     } catch (error) {
@@ -145,6 +178,27 @@ export default function ColaPage() {
     }
   };
 
+  // HU-16: sube o baja un vehículo en espera. El backend devuelve la cola resultante y se muestra al
+  // instante; si el movimiento rompe la prioridad de una reserva próxima responde 409 con el motivo.
+  const totalEnEspera = ordenesBackend?.enEspera.length ?? 0;
+  const mover = async (fila: FilaCola, delta: -1 | 1) => {
+    if (fila.tipo !== "backend") return;
+    const destino = posicionDestino(fila.posicion, delta, totalEnEspera);
+    if (destino === null) return;
+    const { ordenId, patente } = fila.orden;
+    setMoviendo(idDeFila(fila));
+    try {
+      const enEspera = await moverEnCola(ordenId, destino);
+      setOrdenesBackend((actual) => (actual ? { ...actual, enEspera } : actual));
+      notificar(`Cola actualizada: ${patente} quedó en la posición ${destino}.`);
+    } catch (error) {
+      notificar(error instanceof Error ? error.message : "No se pudo cambiar el orden de la cola.");
+    } finally {
+      setMoviendo(null);
+      void cargarColaBackend();
+    }
+  };
+
   // En modo real la cola es lo que dice el backend y nada más; los datos de demo quedan para el
   // modo mock. Así la posición de cada vehículo es la que ve cualquier otro operador.
   const filas = useMemo<FilaCola[]>(() => {
@@ -190,7 +244,31 @@ export default function ColaPage() {
       cliente:
         orden?.clienteNombre ?? (`${c?.nombre ?? ""} ${c?.apellido ?? ""}`.trim() || "—"),
       servicio: orden?.servicioNombre ?? (a ? serviciosDe(a.servicioIds) : "—"),
+      tiempo: orden ? (tiempos.get(orden.ordenId) ?? null) : null,
     };
+  };
+
+  // HU-28: hora estimada de inicio (en espera) o de fin (en lavado), y la demora acumulada.
+  const estimado = (tiempo: TiempoEstimadoApi | null) => {
+    if (!tiempo) return <span className="text-slate-300">—</span>;
+    const enLavado = tiempo.estado === "EN_PROGRESO";
+    return (
+      <span className="inline-flex flex-col gap-0.5">
+        <span className="font-semibold text-slate-700">
+          {enLavado ? "Termina" : "Empieza"} ~{time(enLavado ? tiempo.finEstimado : tiempo.inicioEstimado)}
+        </span>
+        {!enLavado && (
+          <span className="text-[11px] text-slate-400">
+            {tiempo.esperaEstimadaMin > 0 ? `Espera ${tiempo.esperaEstimadaMin} min` : "Puede empezar ya"}
+          </span>
+        )}
+        {tiempo.demoraMin > 0 && (
+          <span className="inline-flex w-fit items-center gap-1 rounded-full bg-orange-50 px-2 py-0.5 text-[11px] font-semibold text-orange-700">
+            <Timer className="h-3 w-3" />+{tiempo.demoraMin} min de demora
+          </span>
+        )}
+      </span>
+    );
   };
 
   const etiquetaOrigen = (origen: string) => (
@@ -227,6 +305,40 @@ export default function ColaPage() {
     const { estado } = fila;
     return (
       <>
+        {orden?.estado === "EN_ESPERA" && (
+          <span className="inline-flex gap-1 align-middle">
+            <button
+              type="button"
+              aria-label={`Subir ${orden.patente} en la cola`}
+              title="Subir en la cola"
+              className="rounded-lg border border-slate-200 p-1 text-slate-500 hover:text-[#6C5CE7] disabled:cursor-not-allowed disabled:opacity-30"
+              disabled={moviendo !== null || posicionDestino(fila.posicion, -1, totalEnEspera) === null}
+              onClick={() => void mover(fila, -1)}
+            >
+              <ChevronUp className="h-3.5 w-3.5" />
+            </button>
+            <button
+              type="button"
+              aria-label={`Bajar ${orden.patente} en la cola`}
+              title="Bajar en la cola"
+              className="rounded-lg border border-slate-200 p-1 text-slate-500 hover:text-[#6C5CE7] disabled:cursor-not-allowed disabled:opacity-30"
+              disabled={moviendo !== null || posicionDestino(fila.posicion, 1, totalEnEspera) === null}
+              onClick={() => void mover(fila, 1)}
+            >
+              <ChevronDown className="h-3.5 w-3.5" />
+            </button>
+          </span>
+        )}
+        {(orden?.estado === "EN_ESPERA" || orden?.estado === "EN_PROGRESO") && (
+          <button
+            type="button"
+            className="text-xs font-semibold text-orange-600"
+            title="Registrar una demora: se recalculan los tiempos y, si hace falta, la cola"
+            onClick={() => setDemoraPara({ ordenId: orden.ordenId, patente: orden.patente })}
+          >
+            Demora
+          </button>
+        )}
         {a?.estado === "EN_ESPERA" && (
           <>
             {!tienePuestoAsignado(a, boxes) && libres[0] && (
@@ -388,6 +500,7 @@ export default function ColaPage() {
                     "Cliente",
                     "Servicio",
                     "Turno / ingreso",
+                    ...(apiConfig.USE_MOCK ? [] : ["Estimado"]),
                     "Estado",
                     "Acción",
                   ].map((h) => (
@@ -400,7 +513,10 @@ export default function ColaPage() {
               <tbody>
                 {mensajeVacio && (
                   <tr>
-                    <td colSpan={8} className="py-8 text-center text-sm text-slate-500">
+                    <td
+                      colSpan={apiConfig.USE_MOCK ? 8 : 9}
+                      className="py-8 text-center text-sm text-slate-500"
+                    >
                       {mensajeVacio}
                     </td>
                   </tr>
@@ -417,10 +533,14 @@ export default function ColaPage() {
                       <td>{d.cliente}</td>
                       <td className="text-slate-500">{d.servicio}</td>
                       <td>{turnoOIngreso(d.horarioReserva, d.ingreso)}</td>
+                      {!apiConfig.USE_MOCK && <td className="text-xs">{estimado(d.tiempo)}</td>}
                       <td>
                         <StageBadge estado={d.estado} />
                       </td>
-                      <td className="space-x-2">{acciones(fila)}</td>
+                      <td>
+                        {/* Con las flechas y "Demora" las acciones ya no entran en una línea. */}
+                        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">{acciones(fila)}</div>
+                      </td>
                     </tr>
                   );
                 })}
@@ -464,6 +584,9 @@ export default function ColaPage() {
                     </div>
                     <div>{etiquetaOrigen(d.origen)}</div>
                     <div className="self-center">{turnoOIngreso(d.horarioReserva, d.ingreso)}</div>
+                    {!apiConfig.USE_MOCK && d.tiempo && (
+                      <div className="col-span-2">{estimado(d.tiempo)}</div>
+                    )}
                   </dl>
                   <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1">{acciones(fila)}</div>
                 </li>
@@ -476,7 +599,7 @@ export default function ColaPage() {
           <ul className="space-y-3">
             {enEspera.map((fila) => {
               const d = describir(fila);
-              const horario = d.horarioReserva ?? d.horaEstimada;
+              const horario = d.horarioReserva ?? d.tiempo?.inicioEstimado ?? d.horaEstimada;
               return (
                 <li
                   key={d.id}
@@ -502,6 +625,136 @@ export default function ColaPage() {
           </ul>
         </Card>
       </div>
+
+      {demoraPara && (
+        <DemoraDialog
+          ordenId={demoraPara.ordenId}
+          patente={demoraPara.patente}
+          onClose={() => setDemoraPara(null)}
+          onGuardada={(mensaje) => {
+            notificar(mensaje);
+            setDemoraPara(null);
+            void cargarColaBackend();
+          }}
+        />
+      )}
     </div>
+  );
+}
+
+/**
+ * HU-28: registrar una demora sobre una atención activa. El backend recalcula los tiempos y, si la
+ * demora obliga a adelantar una reserva próxima, reorganiza la cola; la pantalla la vuelve a pedir.
+ */
+function DemoraDialog({
+  ordenId,
+  patente,
+  onClose,
+  onGuardada,
+}: {
+  ordenId: number;
+  patente: string;
+  onClose: () => void;
+  onGuardada: (mensaje: string) => void;
+}) {
+  const dialogo = useRef<HTMLDialogElement>(null);
+  const [minutos, setMinutos] = useState("10");
+  const [motivo, setMotivo] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [guardando, setGuardando] = useState(false);
+
+  useEffect(() => {
+    dialogo.current?.showModal();
+  }, []);
+
+  const guardar = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (guardando) return;
+    const cantidad = Number(minutos);
+    const invalido = validarDemora(cantidad, motivo);
+    if (invalido) {
+      setError(invalido);
+      return;
+    }
+    setGuardando(true);
+    setError(null);
+    try {
+      const demora = await registrarDemora(ordenId, {
+        minutos: cantidad,
+        motivo: motivo.trim() || undefined,
+      });
+      onGuardada(mensajeDemora(patente, demora.minutos, demora.colaReordenada));
+    } catch (e) {
+      setError(
+        e instanceof ApiError
+          ? e.message
+          : "No se pudo registrar la demora. Verificá la conexión e intentá de nuevo.",
+      );
+      setGuardando(false);
+    }
+  };
+
+  return (
+    <dialog
+      ref={dialogo}
+      onCancel={(e) => {
+        e.preventDefault();
+        if (!guardando) onClose();
+      }}
+      aria-labelledby="demora-titulo"
+      className="fixed inset-0 m-auto w-[calc(100%-2rem)] max-w-md rounded-2xl border border-slate-200 bg-white p-6 text-navy shadow-xl backdrop:bg-slate-900/40"
+    >
+      <h2 id="demora-titulo" className="text-lg font-bold">
+        Registrar demora
+      </h2>
+      <div className="mt-2 flex items-center gap-2 text-sm text-slate-500">
+        Vehículo <Plate value={patente} />
+      </div>
+      <form onSubmit={(e) => void guardar(e)} className="mt-5">
+        <fieldset disabled={guardando} className="space-y-4">
+          <label className="block text-sm">
+            Minutos de demora
+            <input
+              className="field mt-1"
+              type="number"
+              inputMode="numeric"
+              min={DEMORA_MIN}
+              max={DEMORA_MAX}
+              step={1}
+              value={minutos}
+              onChange={(e) => setMinutos(e.target.value)}
+              required
+            />
+          </label>
+          <label className="block text-sm">
+            Motivo (opcional)
+            <input
+              className="field mt-1"
+              maxLength={MOTIVO_MAX}
+              placeholder="Ej.: tapizado muy sucio"
+              value={motivo}
+              onChange={(e) => setMotivo(e.target.value)}
+            />
+          </label>
+          <p className="text-xs text-slate-500">
+            Se recalculan los tiempos estimados y, si hace falta, la cola se reorganiza respetando las
+            reservas próximas. Los vehículos en lavado no cambian de lugar.
+          </p>
+          {error && (
+            <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-700">
+              {error}
+            </p>
+          )}
+          <div className="flex flex-wrap gap-3">
+            <button className="btn-primary" type="submit">
+              {guardando ? "Registrando…" : "Registrar demora"}
+            </button>
+            <button className="btn-ghost" type="button" onClick={onClose}>
+              Cancelar
+            </button>
+          </div>
+        </fieldset>
+      </form>
+    </dialog>
   );
 }

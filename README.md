@@ -46,6 +46,17 @@ pantalla, cada 10 segundos mientras la pestaña está visible y al volver a ella
 "Actualizar" con la hora de la última consulta. Si el backend falla se conserva la última cola
 vista, se avisa y se puede reintentar.
 
+En modo real, además (HU-16 y HU-28):
+
+- Las flechas de cada vehículo en espera lo suben o bajan un lugar (`PATCH /ordenes/{id}/posicion-cola`).
+  El backend guarda el orden y rechaza, con el motivo, un movimiento que deje una reserva próxima
+  detrás de un espontáneo. Los vehículos en lavado no se reordenan.
+- "Demora" registra minutos de demora (y un motivo opcional) sobre un vehículo en espera o en lavado
+  (`POST /ordenes/{id}/demoras`). Si la demora obliga a adelantar una reserva, la cola se reorganiza.
+- La columna "Estimado" muestra el inicio estimado de los que esperan y el fin estimado de los que
+  están en lavado, con la demora acumulada (`GET /lavaderos/{id}/cola/tiempos`). Si esa consulta
+  falla, la cola se muestra igual, sin estimaciones.
+
 ## Pruebas
 
 ```bash
