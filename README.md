@@ -46,20 +46,6 @@ pantalla, cada 10 segundos mientras la pestaña está visible y al volver a ella
 "Actualizar" con la hora de la última consulta. Si el backend falla se conserva la última cola
 vista, se avisa y se puede reintentar.
 
-## Seguimiento del cliente (HU-43)
-
-`/seguimiento/{codigo}` es la página que abre el cliente con el link de su orden. Es pública: no
-usa la sesión ni el store, pide la orden a `GET /seguimiento/{codigo}` y muestra el vehículo, las
-etapas (En espera, En lavado, Listo para retirar, Retirado), los horarios que ya ocurrieron y la
-calificación. Con el servicio finalizado y sin calificar, el cliente elige de 1 a 5 estrellas y
-puede dejar un comentario de hasta 500 caracteres; el botón se deshabilita mientras se envía, así
-un doble clic no manda dos calificaciones. Si ya calificó, ve su calificación en solo lectura; si
-el servicio todavía no terminó, se le avisa que va a poder calificarlo cuando esté finalizado.
-
-El link lo obtiene el coordinador al confirmar la llegada de una reserva en `/ingresos`: el panel
-"Llegada confirmada" muestra la URL completa y un botón para copiarla. En modo demo la página
-sigue usando los datos mock y el panel no muestra el link.
-
 ## Pruebas
 
 ```bash
@@ -74,6 +60,20 @@ Node no resuelve imports sin extensión.
 ---
 
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+
+## Seguimiento del cliente (HU-43)
+
+`/seguimiento/{codigo}` es la página que abre el cliente con el link de su orden. Es pública: no
+usa la sesión ni el store, pide la orden a `GET /seguimiento/{codigo}` y muestra el vehículo, las
+etapas (En espera, En lavado, Listo para retirar, Retirado), los horarios que ya ocurrieron y la
+calificación. Con el servicio finalizado y sin calificar, el cliente elige de 1 a 5 estrellas y
+puede dejar un comentario de hasta 500 caracteres; el botón se deshabilita mientras se envía, así
+un doble clic no manda dos calificaciones. Si ya calificó, ve su calificación en solo lectura; si
+el servicio todavía no terminó, se le avisa que va a poder calificarlo cuando esté finalizado.
+
+El link lo obtiene el coordinador al confirmar la llegada de una reserva en `/ingresos`: el panel
+"Llegada confirmada" muestra la URL completa y un botón para copiarla. En modo demo la página
+sigue usando los datos mock y el panel no muestra el link.
 
 ## Getting Started
 
