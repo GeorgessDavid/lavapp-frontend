@@ -36,6 +36,14 @@ export const users: (User & { password: string })[] = [
     rol: "FLOTA",
     password: "flota",
   },
+  {
+    id: "u4",
+    nombre: "Grupo 5",
+    email: "grupo5@lavapp.com",
+    rol: "DUENO",
+    lavaderoId: 1,
+    password: "grupo5",
+  },
 ];
 
 export const clientes: Cliente[] = [

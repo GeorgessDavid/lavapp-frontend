@@ -10,6 +10,7 @@ const demos = [
   { email: "operador@lavapp.com", password: "operador", rol: "Operador" },
   { email: "dueno@lavapp.com", password: "dueno", rol: "Dueño" },
   { email: "flota@lavapp.com", password: "flota", rol: "Flota" },
+  { email: "grupo5@lavapp.com", password: "grupo5", rol: "Grupo 5" },
 ];
 
 export default function LoginPage() {
