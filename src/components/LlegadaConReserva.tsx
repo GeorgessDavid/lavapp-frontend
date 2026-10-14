@@ -5,8 +5,9 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { CalendarClock, CheckCircle2, LoaderCircle, Search } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { Plate, ReservaBadge } from "@/components/ui/badges";
+import { LinkSeguimiento } from "@/components/seguimiento/LinkSeguimiento";
 import {
-  ApiError, buscarReservasActivas, confirmarLlegadaReserva, obtenerReserva, type ReservaApi,
+  ApiError, apiConfig, buscarReservasActivas, confirmarLlegadaReserva, obtenerReserva, type ReservaApi,
 } from "@/lib/api";
 
 const activa = (r: ReservaApi) => r.ordenTrabajoId === null &&
@@ -148,6 +149,7 @@ export function LlegadaConReserva({ lavaderoId }: { lavaderoId: number }) {
       <p className="mt-2">{llegada.clienteNombre} · {llegada.patente} · {llegada.servicioNombre}</p>
       <p className="mt-1">Turno original: <Horario reserva={llegada} /> · {llegada.puestoNombre}</p>
       <p className="mt-1">Reserva #{llegada.id} vinculada al ingreso #{llegada.ordenTrabajoId}. El vehículo quedó en espera.</p>
+      {!apiConfig.USE_MOCK && llegada.ordenTrabajoId !== null && <LinkSeguimiento key={llegada.ordenTrabajoId} ordenId={llegada.ordenTrabajoId} />}
       <Link href="/reservas" className="mt-3 inline-block font-semibold underline">Ver agenda de reservas</Link>
     </div>}
     {resultados.length > 0 && <div className="mt-5" aria-busy={confirmando !== null}>
