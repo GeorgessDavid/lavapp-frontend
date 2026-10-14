@@ -36,7 +36,7 @@ export function setOnUnauthorized(handler: (() => void) | null) {
   onUnauthorized = handler;
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+export async function request<T>(path: string, init?: RequestInit): Promise<T> {
   // La autenticación es por cookie de sesión (LAVAPP_SESSION, HttpOnly): el navegador la manda
   // solo si la request va con credentials: "include" y el origen está habilitado en el backend.
   const res = await fetch(`${API_URL}${path}`, {
