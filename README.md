@@ -35,6 +35,19 @@ con credenciales (`FRONTEND_ORIGINS`) y la cookie `SameSite=Lax` requiere el mis
 | `NEXT_PUBLIC_USE_MOCK`  | `true`                  | `false` para usar la API real             |
 | `NEXT_PUBLIC_API_URL`   | `http://localhost:8080` | URL base del back-end                     |
 
+## Historial de servicios
+
+`/historial` consulta los servicios anteriores del lavadero de la sesión en el backend
+(`GET /lavaderos/{id}/historial`, HU-39). Se busca por patente (completa, con o sin espacios y
+guiones) o por una parte del nombre del cliente (desde 2 letras), y la búsqueda es a pedido, sin
+sondeo. Solo aparecen atenciones cerradas: vehículos ya retirados.
+
+La tabla muestra fecha y hora de llegada, patente, vehículo, cliente y servicio. La ficha resume
+cuántos servicios hay y cuál fue el último; si los resultados traen varios clientes o vehículos
+(dos clientes con el mismo nombre, o un cliente con dos autos), muestra una ficha para cada uno y
+permite ver en la tabla solo los suyos. Sin antecedentes avisa que no hay registros. En modo demo
+la pantalla sigue usando los datos mock.
+
 ## Cola de vehículos
 
 `/cola` muestra lo que dice el backend (`GET /lavaderos/{id}/ordenes?estado=`): primero los
