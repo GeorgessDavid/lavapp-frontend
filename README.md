@@ -68,7 +68,9 @@ En modo real, además (HU-16 y HU-28):
   (`POST /ordenes/{id}/demoras`). Si la demora obliga a adelantar una reserva, la cola se reorganiza.
 - La columna "Estimado" muestra el inicio estimado de los que esperan y el fin estimado de los que
   están en lavado, con la demora acumulada (`GET /lavaderos/{id}/cola/tiempos`). Si esa consulta
-  falla, la cola se muestra igual, sin estimaciones.
+  falla, la cola se muestra igual, sin estimaciones. Si el backend no pudo estimar un tiempo (sin
+  puestos activos, o un servicio sin duración), la fila dice "Sin estimar" con el motivo: nunca
+  "Puede empezar ya" (HU-17, `lecturaTiempo` en `src/lib/cola-operativa.ts`).
 
 ## Duración de los servicios (HU-54)
 
@@ -93,7 +95,7 @@ Node no resuelve imports sin extensión.
 
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
-## Seguimiento del cliente (HU-43)
+## Seguimiento del cliente (HU-43, HU-17 y HT-07)
 
 `/seguimiento/{codigo}` es la página que abre el cliente con el link de su orden. Es pública: no
 usa la sesión ni el store, pide la orden a `GET /seguimiento/{codigo}` y muestra el vehículo, las
@@ -103,9 +105,28 @@ puede dejar un comentario de hasta 500 caracteres; el botón se deshabilita mien
 un doble clic no manda dos calificaciones. Si ya calificó, ve su calificación en solo lectura; si
 el servicio todavía no terminó, se le avisa que va a poder calificarlo cuando esté finalizado.
 
-El link lo obtiene el coordinador al confirmar la llegada de una reserva en `/ingresos`: el panel
-"Llegada confirmada" muestra la URL completa y un botón para copiarla. En modo demo la página
-sigue usando los datos mock y el panel no muestra el link.
+Mientras el vehículo está en espera (HU-17), la página muestra su lugar en la fila, cuántos
+vehículos hay antes y cuánto falta para que empiece el lavado, con la hora aproximada. Sale del
+bloque `espera` de la respuesta, que el backend calcula con la misma cola que ve el coordinador.
+Si no hay datos para estimar, se muestra el lugar en la fila y se avisa que todavía no se puede
+estimar cuánto falta, sin inventar un tiempo. Hasta que el vehículo se retira, la página vuelve a
+pedir el seguimiento cada 15 segundos con la pestaña visible y al volver a ella, así la posición,
+la espera y la etapa se actualizan solas.
+
+El link vence cuando el vehículo se retira o la atención se cancela (HT-07): el backend responde
+410 y la página dice "Este link ya no está disponible", sin datos del cliente, aunque estuviera
+abierta. Si desde una conexión se consulta demasiado (429), explica que espere un minuto y deja
+reintentar. La página no se indexa en buscadores y no manda su URL como Referer a otros sitios
+(`src/app/seguimiento/[token]/layout.tsx`).
+
+El link lo obtiene el coordinador (HU-53) desde la acción "Link" de cada vehículo en espera, en
+lavado o listo en `/cola`, sea espontáneo o con reserva, y también al confirmar la llegada de una
+reserva en `/ingresos`. El panel muestra la URL completa y deja copiarla, mandarla por WhatsApp
+(`wa.me` con el mensaje armado; un teléfono argentino de 10 dígitos pasa a 549 + número, y si no
+se reconoce WhatsApp se abre sin destinatario) y, donde el navegador tiene menú de compartir, usar
+ese menú. El mensaje solo lleva el nombre del cliente, su vehículo y el link (`mensajeSeguimiento`
+en `src/lib/seguimiento.ts`). En modo demo la página sigue usando los datos mock y el panel no
+muestra el link.
 
 ## Getting Started
 

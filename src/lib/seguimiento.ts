@@ -2,7 +2,11 @@
 // reglas de la calificación. Sin React ni fetch, para probarla con el runner de Node; por eso los
 // imports de lib van con extensión y los de tipos con `import type`.
 import type { EstadoOrdenApi, ServiceStage } from "./types.ts";
-import type { NuevaCalificacion, SeguimientoApi } from "./api-seguimiento.ts";
+import type {
+  EsperaSeguimientoApi,
+  NuevaCalificacion,
+  SeguimientoApi,
+} from "./api-seguimiento.ts";
 import { etapaDeOrden } from "./etapas.ts";
 import { stageLabel } from "./format.ts";
 
@@ -62,6 +66,117 @@ export function horariosSeguimiento(
     const valor = seguimiento[clave];
     return valor ? [{ clave, etiqueta, valor }] : [];
   });
+}
+
+/** La URL pública del seguimiento de una orden: el código va escapado porque viaja en el path. */
+export function urlSeguimiento(origen: string, codigo: string) {
+  return `${origen}/seguimiento/${encodeURIComponent(codigo)}`;
+}
+
+/**
+ * El teléfono en el formato que pide wa.me: solo dígitos, con el código de país, sin "+" ni el 0 del
+ * área. Pensado para Argentina: un número de 10 dígitos (área + abonado) o con el 0 adelante pasa a
+ * 549 + número; uno que ya trae 54 o 549 queda con el 9 de celular. Si no se reconoce, devuelve null
+ * y WhatsApp se abre sin destinatario, para que el coordinador lo elija.
+ */
+export function telefonoWhatsApp(telefono: string | null | undefined): string | null {
+  if (!telefono) return null;
+  const digitos = telefono.replace(/\D/g, "");
+  if (/^549\d{10}$/.test(digitos)) return digitos;
+  if (/^54\d{10}$/.test(digitos)) return `549${digitos.slice(2)}`;
+  if (/^0\d{10}$/.test(digitos)) return `549${digitos.slice(1)}`;
+  if (/^\d{10}$/.test(digitos)) return `549${digitos}`;
+  return null;
+}
+
+/** A quién va el link: lo que se usa para saludar al cliente y nombrar su vehículo. */
+export interface DestinatarioSeguimiento {
+  nombre: string;
+  patente: string;
+  modelo?: string | null;
+  telefono?: string | null;
+}
+
+/** El mensaje que recibe el cliente con su link. Solo lleva datos de él y de su vehículo. */
+export function mensajeSeguimiento(destinatario: DestinatarioSeguimiento, url: string) {
+  const nombre = destinatario.nombre.trim().split(/\s+/)[0];
+  const vehiculo = [destinatario.modelo?.trim(), destinatario.patente].filter(Boolean).join(" ");
+  const saludo = nombre ? `Hola ${nombre}` : "Hola";
+  return `${saludo}, podés seguir el lavado de tu ${vehiculo} desde este link: ${url}`;
+}
+
+/** El link para abrir WhatsApp con el mensaje listo, al teléfono del cliente si se reconoce. */
+export function linkWhatsApp(destinatario: DestinatarioSeguimiento, url: string) {
+  const telefono = telefonoWhatsApp(destinatario.telefono);
+  const texto = encodeURIComponent(mensajeSeguimiento(destinatario, url));
+  return `https://wa.me/${telefono ?? ""}?text=${texto}`;
+}
+
+/**
+ * Por qué no se pudo mostrar el seguimiento, según el status del backend (HT-07):
+ * - "inexistente" (404): el link está mal o la orden no existe.
+ * - "vencido" (410): el vehículo ya se retiró o la orden se canceló; el link dejó de servir.
+ * - "limitado" (429): demasiadas consultas desde esa conexión; se puede reintentar en un minuto.
+ * - "error": cualquier otra cosa, incluida la falta de conexión.
+ */
+export type FalloSeguimiento = "inexistente" | "vencido" | "limitado" | "error";
+
+export function falloSeguimiento(status: number | null): FalloSeguimiento {
+  if (status === 404) return "inexistente";
+  if (status === 410) return "vencido";
+  if (status === 429) return "limitado";
+  return "error";
+}
+
+/** Cada cuánto se vuelve a pedir el seguimiento mientras el vehículo está en el lavadero. */
+export const INTERVALO_ACTUALIZACION_MS = 15_000;
+
+/**
+ * Si el seguimiento puede cambiar solo: mientras espera o se lava, la posición, la espera y el
+ * estado cambian sin que el cliente haga nada; listo, hasta que lo retira, porque al retirarlo el
+ * link vence (HT-07) y la página tiene que dejar de mostrar sus datos. Retirado o cancelado ya no
+ * se mueven.
+ */
+export function seActualizaSolo(estado: EstadoOrdenApi) {
+  return estado === "EN_ESPERA" || estado === "EN_PROGRESO" || estado === "LISTO";
+}
+
+/** "45 min", "1 h", "1 h 20 min". */
+export function duracionLegible(minutos: number) {
+  const horas = Math.floor(minutos / 60);
+  const resto = minutos % 60;
+  if (horas === 0) return `${resto} min`;
+  return resto === 0 ? `${horas} h` : `${horas} h ${resto} min`;
+}
+
+export interface ResumenEspera {
+  /** "Sos el próximo" o "Hay 2 vehículos antes que el tuyo". */
+  posicion: string;
+  /** La espera estimada, o null si no se pudo estimar: nunca se muestra un tiempo inventado. */
+  espera: { texto: string; inicio: string | null } | null;
+}
+
+/**
+ * Lo que se le dice al cliente sobre su lugar en la fila y cuánto falta (HU-17). La posición viene
+ * siempre; la espera solo cuando el backend pudo estimarla.
+ */
+export function resumenEspera(espera: EsperaSeguimientoApi): ResumenEspera {
+  const antes = espera.posicion - 1;
+  const posicion =
+    antes <= 0
+      ? "Sos el próximo en la fila"
+      : `Hay ${antes} ${antes === 1 ? "vehículo" : "vehículos"} antes que el tuyo`;
+  if (espera.esperaEstimadaMin === null) return { posicion, espera: null };
+  return {
+    posicion,
+    espera: {
+      texto:
+        espera.esperaEstimadaMin <= 0
+          ? "Tu lavado puede empezar en cualquier momento"
+          : `Empieza en unos ${duracionLegible(espera.esperaEstimadaMin)}`,
+      inicio: espera.esperaEstimadaMin > 0 ? espera.inicioEstimado : null,
+    },
+  };
 }
 
 /**

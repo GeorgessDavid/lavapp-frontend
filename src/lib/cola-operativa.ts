@@ -33,6 +33,36 @@ export function indexarTiempos(tiempos: TiempoEstimadoApi[]): Map<number, Tiempo
   return new Map(tiempos.map((tiempo) => [tiempo.ordenId, tiempo]));
 }
 
+export const SIN_DATOS_PARA_ESTIMAR = "No hay datos suficientes para estimarlo";
+
+/**
+ * Qué mostrar del tiempo de una orden: la hora estimada de inicio (en espera) o de fin (en lavado)
+ * con la espera, o que no se pudo estimar y por qué. Nunca convierte un null en "ya": si el backend
+ * no pudo estimar, la fila lo dice (HU-17).
+ */
+export type LecturaTiempo =
+  | { tipo: "estimado"; etiqueta: "Empieza" | "Termina"; hora: string; esperaMin: number | null }
+  | { tipo: "sin-estimar"; motivo: string };
+
+export function lecturaTiempo(tiempo: TiempoEstimadoApi): LecturaTiempo {
+  const sinEstimar: LecturaTiempo = {
+    tipo: "sin-estimar",
+    motivo: tiempo.sinEstimacion ?? SIN_DATOS_PARA_ESTIMAR,
+  };
+  if (tiempo.estado === "EN_PROGRESO") {
+    return tiempo.finEstimado
+      ? { tipo: "estimado", etiqueta: "Termina", hora: tiempo.finEstimado, esperaMin: null }
+      : sinEstimar;
+  }
+  if (!tiempo.inicioEstimado || tiempo.esperaEstimadaMin === null) return sinEstimar;
+  return {
+    tipo: "estimado",
+    etiqueta: "Empieza",
+    hora: tiempo.inicioEstimado,
+    esperaMin: tiempo.esperaEstimadaMin,
+  };
+}
+
 /** El aviso después de registrar una demora. */
 export function mensajeDemora(patente: string, minutos: number, colaReordenada: boolean) {
   return (

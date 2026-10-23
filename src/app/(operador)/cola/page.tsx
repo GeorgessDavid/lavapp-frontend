@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { Card, KpiCard } from "@/components/ui/Card";
 import { Plate, StageBadge } from "@/components/ui/badges";
+import { LinkSeguimiento } from "@/components/seguimiento/LinkSeguimiento";
 import { useApp } from "@/lib/store";
 import { useLookups } from "@/lib/lookups";
 import { time, timeWithSeconds } from "@/lib/format";
@@ -30,11 +31,13 @@ import {
   DEMORA_MIN,
   MOTIVO_MAX,
   indexarTiempos,
+  lecturaTiempo,
   mensajeDemora,
   posicionDestino,
   validarDemora,
 } from "@/lib/cola-operativa";
 import { estaEnLavado, tieneEtapaIntermedia } from "@/lib/etapas";
+import type { DestinatarioSeguimiento } from "@/lib/seguimiento";
 import {
   armarFilasBackend,
   armarFilasLocales,
@@ -83,6 +86,8 @@ export default function ColaPage() {
   const [moviendo, setMoviendo] = useState<string | null>(null);
   // HU-28: la orden a la que se le está registrando una demora (abre el diálogo).
   const [demoraPara, setDemoraPara] = useState<{ ordenId: number; patente: string } | null>(null);
+  // HU-53: el link de seguimiento de cualquier atención activa, espontánea o con reserva.
+  const [linkPara, setLinkPara] = useState<LinkParaOrden | null>(null);
   const lavaderoId = user?.lavaderoId;
   const libres = boxes.filter((b) => b.estado === "DISPONIBLE");
   const activas = atenciones.filter((a) => a.estado !== "RETIRADO");
@@ -251,16 +256,25 @@ export default function ColaPage() {
   // HU-28: hora estimada de inicio (en espera) o de fin (en lavado), y la demora acumulada.
   const estimado = (tiempo: TiempoEstimadoApi | null) => {
     if (!tiempo) return <span className="text-slate-300">—</span>;
-    const enLavado = tiempo.estado === "EN_PROGRESO";
+    const lectura = lecturaTiempo(tiempo);
     return (
       <span className="inline-flex flex-col gap-0.5">
-        <span className="font-semibold text-slate-700">
-          {enLavado ? "Termina" : "Empieza"} ~{time(enLavado ? tiempo.finEstimado : tiempo.inicioEstimado)}
-        </span>
-        {!enLavado && (
-          <span className="text-[11px] text-slate-400">
-            {tiempo.esperaEstimadaMin > 0 ? `Espera ${tiempo.esperaEstimadaMin} min` : "Puede empezar ya"}
-          </span>
+        {lectura.tipo === "estimado" ? (
+          <>
+            <span className="font-semibold text-slate-700">
+              {lectura.etiqueta} ~{time(lectura.hora)}
+            </span>
+            {lectura.esperaMin !== null && (
+              <span className="text-[11px] text-slate-400">
+                {lectura.esperaMin > 0 ? `Espera ${lectura.esperaMin} min` : "Puede empezar ya"}
+              </span>
+            )}
+          </>
+        ) : (
+          <>
+            <span className="font-semibold text-slate-500">Sin estimar</span>
+            <span className="text-[11px] text-slate-400">{lectura.motivo}</span>
+          </>
         )}
         {tiempo.demoraMin > 0 && (
           <span className="inline-flex w-fit items-center gap-1 rounded-full bg-orange-50 px-2 py-0.5 text-[11px] font-semibold text-orange-700">
@@ -337,6 +351,26 @@ export default function ColaPage() {
             onClick={() => setDemoraPara({ ordenId: orden.ordenId, patente: orden.patente })}
           >
             Demora
+          </button>
+        )}
+        {orden && ESTADOS_CON_LINK.includes(orden.estado) && (
+          <button
+            type="button"
+            className="text-xs font-semibold text-[#6C5CE7]"
+            title="Copiar o enviar al cliente el link para seguir su vehículo"
+            onClick={() =>
+              setLinkPara({
+                ordenId: orden.ordenId,
+                destinatario: {
+                  nombre: orden.clienteNombre,
+                  patente: orden.patente,
+                  modelo: orden.modelo,
+                  telefono: orden.clienteTelefono,
+                },
+              })
+            }
+          >
+            Link
           </button>
         )}
         {a?.estado === "EN_ESPERA" && (
@@ -638,7 +672,49 @@ export default function ColaPage() {
           }}
         />
       )}
+      {linkPara && <LinkDialog {...linkPara} onClose={() => setLinkPara(null)} />}
     </div>
+  );
+}
+
+/** Las atenciones activas, las que tienen un seguimiento para mandarle al cliente. */
+const ESTADOS_CON_LINK: string[] = ["EN_ESPERA", "EN_PROGRESO", "LISTO"];
+
+type LinkParaOrden = { ordenId: number; destinatario: DestinatarioSeguimiento };
+
+/** HU-53: el link de seguimiento de una atención, para copiarlo o mandárselo al cliente. */
+function LinkDialog({ ordenId, destinatario, onClose }: LinkParaOrden & { onClose: () => void }) {
+  const dialogo = useRef<HTMLDialogElement>(null);
+
+  useEffect(() => {
+    dialogo.current?.showModal();
+  }, []);
+
+  return (
+    <dialog
+      ref={dialogo}
+      onCancel={(e) => {
+        e.preventDefault();
+        onClose();
+      }}
+      aria-labelledby="link-titulo"
+      className="fixed inset-0 m-auto w-[calc(100%-2rem)] max-w-md rounded-2xl border border-slate-200 bg-white p-6 text-navy shadow-xl backdrop:bg-slate-900/40"
+    >
+      <h2 id="link-titulo" className="text-lg font-bold">
+        Seguimiento del cliente
+      </h2>
+      <div className="mt-2 flex items-center gap-2 text-sm text-slate-500">
+        {destinatario.nombre} · <Plate value={destinatario.patente} />
+      </div>
+      <div className="mt-5 text-sm">
+        <LinkSeguimiento ordenId={ordenId} destinatario={destinatario} />
+      </div>
+      <div className="mt-6 flex justify-end">
+        <button type="button" className="btn-ghost" onClick={onClose}>
+          Cerrar
+        </button>
+      </div>
+    </dialog>
   );
 }
 
