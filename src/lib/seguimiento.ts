@@ -68,6 +68,50 @@ export function horariosSeguimiento(
   });
 }
 
+/** La URL pública del seguimiento de una orden: el código va escapado porque viaja en el path. */
+export function urlSeguimiento(origen: string, codigo: string) {
+  return `${origen}/seguimiento/${encodeURIComponent(codigo)}`;
+}
+
+/**
+ * El teléfono en el formato que pide wa.me: solo dígitos, con el código de país, sin "+" ni el 0 del
+ * área. Pensado para Argentina: un número de 10 dígitos (área + abonado) o con el 0 adelante pasa a
+ * 549 + número; uno que ya trae 54 o 549 queda con el 9 de celular. Si no se reconoce, devuelve null
+ * y WhatsApp se abre sin destinatario, para que el coordinador lo elija.
+ */
+export function telefonoWhatsApp(telefono: string | null | undefined): string | null {
+  if (!telefono) return null;
+  const digitos = telefono.replace(/\D/g, "");
+  if (/^549\d{10}$/.test(digitos)) return digitos;
+  if (/^54\d{10}$/.test(digitos)) return `549${digitos.slice(2)}`;
+  if (/^0\d{10}$/.test(digitos)) return `549${digitos.slice(1)}`;
+  if (/^\d{10}$/.test(digitos)) return `549${digitos}`;
+  return null;
+}
+
+/** A quién va el link: lo que se usa para saludar al cliente y nombrar su vehículo. */
+export interface DestinatarioSeguimiento {
+  nombre: string;
+  patente: string;
+  modelo?: string | null;
+  telefono?: string | null;
+}
+
+/** El mensaje que recibe el cliente con su link. Solo lleva datos de él y de su vehículo. */
+export function mensajeSeguimiento(destinatario: DestinatarioSeguimiento, url: string) {
+  const nombre = destinatario.nombre.trim().split(/\s+/)[0];
+  const vehiculo = [destinatario.modelo?.trim(), destinatario.patente].filter(Boolean).join(" ");
+  const saludo = nombre ? `Hola ${nombre}` : "Hola";
+  return `${saludo}, podés seguir el lavado de tu ${vehiculo} desde este link: ${url}`;
+}
+
+/** El link para abrir WhatsApp con el mensaje listo, al teléfono del cliente si se reconoce. */
+export function linkWhatsApp(destinatario: DestinatarioSeguimiento, url: string) {
+  const telefono = telefonoWhatsApp(destinatario.telefono);
+  const texto = encodeURIComponent(mensajeSeguimiento(destinatario, url));
+  return `https://wa.me/${telefono ?? ""}?text=${texto}`;
+}
+
 /** Cada cuánto se vuelve a pedir el seguimiento mientras el vehículo está en el lavadero. */
 export const INTERVALO_ACTUALIZACION_MS = 15_000;
 

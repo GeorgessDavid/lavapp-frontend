@@ -9,9 +9,13 @@ import {
   etapasSeguimiento,
   etiquetaEstrellas,
   horariosSeguimiento,
+  linkWhatsApp,
+  mensajeSeguimiento,
   modoCalificacion,
   resumenEspera,
   seActualizaSolo,
+  telefonoWhatsApp,
+  urlSeguimiento,
   validarCalificacion,
 } from "./seguimiento.ts";
 
@@ -161,4 +165,43 @@ test("solo se actualiza sola mientras el vehículo espera o se lava", () => {
   assert.equal(seActualizaSolo("LISTO"), false);
   assert.equal(seActualizaSolo("ENTREGADO"), false);
   assert.equal(seActualizaSolo("CANCELADO"), false);
+});
+
+// HU-53: compartir el link de seguimiento.
+const destinatario = { nombre: "Martina Gómez", patente: "AE512KD", modelo: "Gol Trend", telefono: "341 555-1234" };
+const url = "https://app.lavapp.com/seguimiento/9b2f6c1e-3d4a-4f8b-a1c7-5e0d2b8f6a93";
+
+test("la URL del seguimiento lleva el código escapado", () => {
+  assert.equal(urlSeguimiento("https://app.lavapp.com", "a b/c"), "https://app.lavapp.com/seguimiento/a%20b%2Fc");
+});
+
+test("los teléfonos argentinos pasan al formato de wa.me", () => {
+  assert.equal(telefonoWhatsApp("341 555-1234"), "5493415551234");
+  assert.equal(telefonoWhatsApp("0341 5551234"), "5493415551234");
+  assert.equal(telefonoWhatsApp("+54 341 555 1234"), "5493415551234");
+  assert.equal(telefonoWhatsApp("+54 9 341 555 1234"), "5493415551234");
+});
+
+test("un teléfono que no se reconoce no se adivina", () => {
+  assert.equal(telefonoWhatsApp("555-1234"), null);
+  assert.equal(telefonoWhatsApp(""), null);
+  assert.equal(telefonoWhatsApp(null), null);
+});
+
+test("el mensaje saluda por el nombre y nombra el vehículo, con el link", () => {
+  assert.equal(
+    mensajeSeguimiento(destinatario, url),
+    `Hola Martina, podés seguir el lavado de tu Gol Trend AE512KD desde este link: ${url}`,
+  );
+  assert.equal(
+    mensajeSeguimiento({ nombre: "", patente: "AE512KD" }, url),
+    `Hola, podés seguir el lavado de tu AE512KD desde este link: ${url}`,
+  );
+});
+
+test("WhatsApp se abre al teléfono del cliente, o sin destinatario si no se reconoce", () => {
+  const conTelefono = linkWhatsApp(destinatario, url);
+  assert.ok(conTelefono.startsWith("https://wa.me/5493415551234?text="));
+  assert.equal(decodeURIComponent(conTelefono.split("text=")[1]), mensajeSeguimiento(destinatario, url));
+  assert.ok(linkWhatsApp({ ...destinatario, telefono: null }, url).startsWith("https://wa.me/?text="));
 });
