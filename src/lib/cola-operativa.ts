@@ -38,10 +38,18 @@ export const SIN_DATOS_PARA_ESTIMAR = "No hay datos suficientes para estimarlo";
 /**
  * Qué mostrar del tiempo de una orden: la hora estimada de inicio (en espera) o de fin (en lavado)
  * con la espera, o que no se pudo estimar y por qué. Nunca convierte un null en "ya": si el backend
- * no pudo estimar, la fila lo dice (HU-17).
+ * no pudo estimar, la fila lo dice (HU-17). Con el motor de tiempos (HT-10) suma el puesto en el que
+ * se asume que se atiende y, si una reserva que todavía no llegó corrió su inicio, su horario.
  */
 export type LecturaTiempo =
-  | { tipo: "estimado"; etiqueta: "Empieza" | "Termina"; hora: string; esperaMin: number | null }
+  | {
+      tipo: "estimado";
+      etiqueta: "Empieza" | "Termina";
+      hora: string;
+      esperaMin: number | null;
+      puesto: string | null;
+      reservaPrevia: string | null;
+    }
   | { tipo: "sin-estimar"; motivo: string };
 
 export function lecturaTiempo(tiempo: TiempoEstimadoApi): LecturaTiempo {
@@ -49,9 +57,18 @@ export function lecturaTiempo(tiempo: TiempoEstimadoApi): LecturaTiempo {
     tipo: "sin-estimar",
     motivo: tiempo.sinEstimacion ?? SIN_DATOS_PARA_ESTIMAR,
   };
+  // Un backend anterior al motor de tiempos no manda puesto ni reserva: cuentan como null.
+  const puesto = tiempo.puestoNombre ?? null;
   if (tiempo.estado === "EN_PROGRESO") {
     return tiempo.finEstimado
-      ? { tipo: "estimado", etiqueta: "Termina", hora: tiempo.finEstimado, esperaMin: null }
+      ? {
+          tipo: "estimado",
+          etiqueta: "Termina",
+          hora: tiempo.finEstimado,
+          esperaMin: null,
+          puesto,
+          reservaPrevia: null,
+        }
       : sinEstimar;
   }
   if (!tiempo.inicioEstimado || tiempo.esperaEstimadaMin === null) return sinEstimar;
@@ -60,6 +77,8 @@ export function lecturaTiempo(tiempo: TiempoEstimadoApi): LecturaTiempo {
     etiqueta: "Empieza",
     hora: tiempo.inicioEstimado,
     esperaMin: tiempo.esperaEstimadaMin,
+    puesto,
+    reservaPrevia: tiempo.reservaPrevia ?? null,
   };
 }
 

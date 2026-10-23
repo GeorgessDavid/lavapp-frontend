@@ -11,6 +11,10 @@ import type { OrdenColaApi } from "./types";
  *
  * El backend no inventa tiempos (HU-17): sin puestos activos, o si falta la duración de un
  * servicio, lo que no se puede estimar llega en null y `sinEstimacion` dice por qué.
+ *
+ * El motor de tiempos (HT-10) estima cada vehículo en un puesto concreto: `puestoNombre` es el
+ * puesto en el que se asume que se atiende, y `reservaPrevia` el horario de una reserva que todavía
+ * no llegó y que corrió su inicio. Los dos vienen en null si no aplican.
  */
 export interface TiempoEstimadoApi {
   ordenId: number;
@@ -21,6 +25,9 @@ export interface TiempoEstimadoApi {
   finEstimado: string | null;
   esperaEstimadaMin: number | null;
   sinEstimacion: string | null;
+  puestoId: number | null;
+  puestoNombre: string | null;
+  reservaPrevia: string | null;
 }
 
 /** Demora registrada. `colaReordenada` dice si cambió el orden de la cola de espera. */
