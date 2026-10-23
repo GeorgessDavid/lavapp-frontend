@@ -70,6 +70,14 @@ En modo real, además (HU-16 y HU-28):
   están en lavado, con la demora acumulada (`GET /lavaderos/{id}/cola/tiempos`). Si esa consulta
   falla, la cola se muestra igual, sin estimaciones.
 
+## Duración de los servicios (HU-54)
+
+`/servicios`, en el menú del dueño, lista los servicios del lavadero con su duración estimada y deja
+editarla de a uno (`PATCH /lavaderos/{id}/servicios/{sid}/duracion`). Acepta enteros de 1 a 120
+minutos, las mismas reglas del backend (`validarDuracion` en `src/lib/servicios.ts`); cada servicio
+se guarda por separado. Esa duración es la que usan la espera y el horario estimado de la cola y del
+seguimiento del cliente. En modo demo usa los servicios del mock y los cambios no se guardan.
+
 ## Pruebas
 
 ```bash
