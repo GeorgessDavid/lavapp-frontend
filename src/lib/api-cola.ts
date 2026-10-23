@@ -8,15 +8,19 @@ import type { OrdenColaApi } from "./types";
 /**
  * Tiempos estimados de una orden activa. Para una orden en lavado, `inicioEstimado` es el inicio
  * real del lavado y la espera es cero; `posicion` solo existe para las que esperan.
+ *
+ * El backend no inventa tiempos (HU-17): sin puestos activos, o si falta la duración de un
+ * servicio, lo que no se puede estimar llega en null y `sinEstimacion` dice por qué.
  */
 export interface TiempoEstimadoApi {
   ordenId: number;
   estado: "EN_ESPERA" | "EN_PROGRESO";
   posicion: number | null;
   demoraMin: number;
-  inicioEstimado: string;
-  finEstimado: string;
-  esperaEstimadaMin: number;
+  inicioEstimado: string | null;
+  finEstimado: string | null;
+  esperaEstimadaMin: number | null;
+  sinEstimacion: string | null;
 }
 
 /** Demora registrada. `colaReordenada` dice si cambió el orden de la cola de espera. */

@@ -30,6 +30,7 @@ import {
   DEMORA_MIN,
   MOTIVO_MAX,
   indexarTiempos,
+  lecturaTiempo,
   mensajeDemora,
   posicionDestino,
   validarDemora,
@@ -251,16 +252,25 @@ export default function ColaPage() {
   // HU-28: hora estimada de inicio (en espera) o de fin (en lavado), y la demora acumulada.
   const estimado = (tiempo: TiempoEstimadoApi | null) => {
     if (!tiempo) return <span className="text-slate-300">—</span>;
-    const enLavado = tiempo.estado === "EN_PROGRESO";
+    const lectura = lecturaTiempo(tiempo);
     return (
       <span className="inline-flex flex-col gap-0.5">
-        <span className="font-semibold text-slate-700">
-          {enLavado ? "Termina" : "Empieza"} ~{time(enLavado ? tiempo.finEstimado : tiempo.inicioEstimado)}
-        </span>
-        {!enLavado && (
-          <span className="text-[11px] text-slate-400">
-            {tiempo.esperaEstimadaMin > 0 ? `Espera ${tiempo.esperaEstimadaMin} min` : "Puede empezar ya"}
-          </span>
+        {lectura.tipo === "estimado" ? (
+          <>
+            <span className="font-semibold text-slate-700">
+              {lectura.etiqueta} ~{time(lectura.hora)}
+            </span>
+            {lectura.esperaMin !== null && (
+              <span className="text-[11px] text-slate-400">
+                {lectura.esperaMin > 0 ? `Espera ${lectura.esperaMin} min` : "Puede empezar ya"}
+              </span>
+            )}
+          </>
+        ) : (
+          <>
+            <span className="font-semibold text-slate-500">Sin estimar</span>
+            <span className="text-[11px] text-slate-400">{lectura.motivo}</span>
+          </>
         )}
         {tiempo.demoraMin > 0 && (
           <span className="inline-flex w-fit items-center gap-1 rounded-full bg-orange-50 px-2 py-0.5 text-[11px] font-semibold text-orange-700">
