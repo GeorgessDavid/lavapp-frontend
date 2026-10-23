@@ -105,9 +105,14 @@ estimar cuánto falta, sin inventar un tiempo. Mientras espera o se lava, la pá
 el seguimiento cada 15 segundos con la pestaña visible y al volver a ella, así la posición, la
 espera y la etapa se actualizan solas; listo, retirado o cancelado ya no se consultan solos.
 
-El link lo obtiene el coordinador al confirmar la llegada de una reserva en `/ingresos`: el panel
-"Llegada confirmada" muestra la URL completa y un botón para copiarla. En modo demo la página
-sigue usando los datos mock y el panel no muestra el link.
+El link lo obtiene el coordinador (HU-53) desde la acción "Link" de cada vehículo en espera, en
+lavado o listo en `/cola`, sea espontáneo o con reserva, y también al confirmar la llegada de una
+reserva en `/ingresos`. El panel muestra la URL completa y deja copiarla, mandarla por WhatsApp
+(`wa.me` con el mensaje armado; un teléfono argentino de 10 dígitos pasa a 549 + número, y si no
+se reconoce WhatsApp se abre sin destinatario) y, donde el navegador tiene menú de compartir, usar
+ese menú. El mensaje solo lleva el nombre del cliente, su vehículo y el link (`mensajeSeguimiento`
+en `src/lib/seguimiento.ts`). En modo demo la página sigue usando los datos mock y el panel no
+muestra el link.
 
 ## Getting Started
 
