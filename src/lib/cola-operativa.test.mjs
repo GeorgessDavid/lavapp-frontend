@@ -66,6 +66,9 @@ const tiempoBase = {
   finEstimado: "2026-10-23T13:45:00Z",
   esperaEstimadaMin: 0,
   sinEstimacion: null,
+  puestoId: 2,
+  puestoNombre: "Puesto 2",
+  reservaPrevia: null,
 };
 
 test("en espera con todo estimado: hora de inicio y la espera", () => {
@@ -74,6 +77,8 @@ test("en espera con todo estimado: hora de inicio y la espera", () => {
     etiqueta: "Empieza",
     hora: "2026-10-23T13:00:00Z",
     esperaMin: 15,
+    puesto: "Puesto 2",
+    reservaPrevia: null,
   });
 });
 
@@ -106,4 +111,28 @@ test("en lavado: hora de fin, o sin estimar si el servicio no tiene duración", 
 test("un servicio sin duración en espera conserva su hora de inicio", () => {
   const lectura = lecturaTiempo({ ...tiempoBase, finEstimado: null, sinEstimacion: "Sin duración" });
   assert.equal(lectura.tipo, "estimado");
+});
+
+// HT-10: el puesto previsto y la reserva que corrió el inicio.
+test("en espera trae el puesto previsto y la reserva que corrió su inicio", () => {
+  const lectura = lecturaTiempo({ ...tiempoBase, esperaEstimadaMin: 40, reservaPrevia: "2026-10-23T12:30:00Z" });
+  assert.equal(lectura.puesto, "Puesto 2");
+  assert.equal(lectura.reservaPrevia, "2026-10-23T12:30:00Z");
+});
+
+test("en lavado trae su puesto y nunca una reserva previa", () => {
+  const lectura = lecturaTiempo({ ...tiempoBase, estado: "EN_PROGRESO", posicion: null, reservaPrevia: "2026-10-23T12:30:00Z" });
+  assert.equal(lectura.puesto, "Puesto 2");
+  assert.equal(lectura.reservaPrevia, null);
+});
+
+test("un backend anterior al motor, sin puesto ni reserva, se lee igual", () => {
+  const viejo = { ...tiempoBase };
+  delete viejo.puestoId;
+  delete viejo.puestoNombre;
+  delete viejo.reservaPrevia;
+  const lectura = lecturaTiempo(viejo);
+  assert.equal(lectura.tipo, "estimado");
+  assert.equal(lectura.puesto, null);
+  assert.equal(lectura.reservaPrevia, null);
 });

@@ -70,7 +70,9 @@ En modo real, además (HU-16 y HU-28):
   están en lavado, con la demora acumulada (`GET /lavaderos/{id}/cola/tiempos`). Si esa consulta
   falla, la cola se muestra igual, sin estimaciones. Si el backend no pudo estimar un tiempo (sin
   puestos activos, o un servicio sin duración), la fila dice "Sin estimar" con el motivo: nunca
-  "Puede empezar ya" (HU-17, `lecturaTiempo` en `src/lib/cola-operativa.ts`).
+  "Puede empezar ya" (HU-17, `lecturaTiempo` en `src/lib/cola-operativa.ts`). Con el motor de
+  tiempos del backend (HT-10), cada fila dice además en qué puesto se asume que se atiende y, si una
+  reserva que todavía no llegó le corrió el inicio, "Después de la reserva de las HH:MM".
 
 ## Duración de los servicios (HU-54)
 

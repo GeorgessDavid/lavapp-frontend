@@ -253,7 +253,8 @@ export default function ColaPage() {
     };
   };
 
-  // HU-28: hora estimada de inicio (en espera) o de fin (en lavado), y la demora acumulada.
+  // HU-28: hora estimada de inicio (en espera) o de fin (en lavado), y la demora acumulada. HT-10: el
+  // puesto previsto y, si una reserva que todavía no llegó corrió el inicio, su horario.
   const estimado = (tiempo: TiempoEstimadoApi | null) => {
     if (!tiempo) return <span className="text-slate-300">—</span>;
     const lectura = lecturaTiempo(tiempo);
@@ -263,10 +264,17 @@ export default function ColaPage() {
           <>
             <span className="font-semibold text-slate-700">
               {lectura.etiqueta} ~{time(lectura.hora)}
+              {lectura.puesto && <span className="font-normal text-slate-500"> · {lectura.puesto}</span>}
             </span>
             {lectura.esperaMin !== null && (
               <span className="text-[11px] text-slate-400">
                 {lectura.esperaMin > 0 ? `Espera ${lectura.esperaMin} min` : "Puede empezar ya"}
+              </span>
+            )}
+            {lectura.reservaPrevia && (
+              <span className="inline-flex w-fit items-center gap-1 text-[11px] font-semibold text-violet-700">
+                <CalendarClock className="h-3 w-3" />
+                Después de la reserva de las {time(lectura.reservaPrevia)}
               </span>
             )}
           </>
