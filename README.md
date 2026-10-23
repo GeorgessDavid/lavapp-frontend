@@ -87,7 +87,7 @@ Node no resuelve imports sin extensión.
 
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
-## Seguimiento del cliente (HU-43 y HU-17)
+## Seguimiento del cliente (HU-43, HU-17 y HT-07)
 
 `/seguimiento/{codigo}` es la página que abre el cliente con el link de su orden. Es pública: no
 usa la sesión ni el store, pide la orden a `GET /seguimiento/{codigo}` y muestra el vehículo, las
@@ -101,9 +101,15 @@ Mientras el vehículo está en espera (HU-17), la página muestra su lugar en la
 vehículos hay antes y cuánto falta para que empiece el lavado, con la hora aproximada. Sale del
 bloque `espera` de la respuesta, que el backend calcula con la misma cola que ve el coordinador.
 Si no hay datos para estimar, se muestra el lugar en la fila y se avisa que todavía no se puede
-estimar cuánto falta, sin inventar un tiempo. Mientras espera o se lava, la página vuelve a pedir
-el seguimiento cada 15 segundos con la pestaña visible y al volver a ella, así la posición, la
-espera y la etapa se actualizan solas; listo, retirado o cancelado ya no se consultan solos.
+estimar cuánto falta, sin inventar un tiempo. Hasta que el vehículo se retira, la página vuelve a
+pedir el seguimiento cada 15 segundos con la pestaña visible y al volver a ella, así la posición,
+la espera y la etapa se actualizan solas.
+
+El link vence cuando el vehículo se retira o la atención se cancela (HT-07): el backend responde
+410 y la página dice "Este link ya no está disponible", sin datos del cliente, aunque estuviera
+abierta. Si desde una conexión se consulta demasiado (429), explica que espere un minuto y deja
+reintentar. La página no se indexa en buscadores y no manda su URL como Referer a otros sitios
+(`src/app/seguimiento/[token]/layout.tsx`).
 
 El link lo obtiene el coordinador (HU-53) desde la acción "Link" de cada vehículo en espera, en
 lavado o listo en `/cola`, sea espontáneo o con reserva, y también al confirmar la llegada de una

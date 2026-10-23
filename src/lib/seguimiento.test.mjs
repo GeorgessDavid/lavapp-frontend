@@ -8,6 +8,7 @@ import {
   duracionLegible,
   etapasSeguimiento,
   etiquetaEstrellas,
+  falloSeguimiento,
   horariosSeguimiento,
   linkWhatsApp,
   mensajeSeguimiento,
@@ -159,10 +160,10 @@ test("las esperas largas se leen en horas", () => {
   assert.equal(duracionLegible(95), "1 h 35 min");
 });
 
-test("solo se actualiza sola mientras el vehículo espera o se lava", () => {
+test("se actualiza sola hasta que el vehículo se retira", () => {
   assert.equal(seActualizaSolo("EN_ESPERA"), true);
   assert.equal(seActualizaSolo("EN_PROGRESO"), true);
-  assert.equal(seActualizaSolo("LISTO"), false);
+  assert.equal(seActualizaSolo("LISTO"), true);
   assert.equal(seActualizaSolo("ENTREGADO"), false);
   assert.equal(seActualizaSolo("CANCELADO"), false);
 });
@@ -204,4 +205,13 @@ test("WhatsApp se abre al teléfono del cliente, o sin destinatario si no se rec
   assert.ok(conTelefono.startsWith("https://wa.me/5493415551234?text="));
   assert.equal(decodeURIComponent(conTelefono.split("text=")[1]), mensajeSeguimiento(destinatario, url));
   assert.ok(linkWhatsApp({ ...destinatario, telefono: null }, url).startsWith("https://wa.me/?text="));
+});
+
+// HT-07: por qué no se pudo mostrar el seguimiento.
+test("cada status del backend tiene su motivo; lo desconocido es un error", () => {
+  assert.equal(falloSeguimiento(404), "inexistente");
+  assert.equal(falloSeguimiento(410), "vencido");
+  assert.equal(falloSeguimiento(429), "limitado");
+  assert.equal(falloSeguimiento(500), "error");
+  assert.equal(falloSeguimiento(null), "error");
 });
