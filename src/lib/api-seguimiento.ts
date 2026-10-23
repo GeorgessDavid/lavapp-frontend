@@ -11,8 +11,24 @@ export interface CalificacionApi {
 }
 
 /**
+ * Posición en la cola y espera estimada mientras la orden está en espera (HU-17). Sale del mismo
+ * cálculo que la cola del coordinador y se recalcula en cada consulta. `esperaEstimadaMin` e
+ * `inicioEstimado` llegan en null cuando no hay datos para estimar sin inventar (`sinEstimacion`
+ * dice por qué); `calculadaEl` es el momento del cálculo.
+ */
+export interface EsperaSeguimientoApi {
+  posicion: number;
+  esperaEstimadaMin: number | null;
+  inicioEstimado: string | null;
+  puestosActivos: number;
+  sinEstimacion: string | null;
+  calculadaEl: string;
+}
+
+/**
  * Lo que ve el cliente en su link (GET /seguimiento/{codigo}). `llegada` es cuando entró el
- * vehículo; `inicioLavado`, `finLavado` y `salida` llegan en null hasta que ocurren.
+ * vehículo; `inicioLavado`, `finLavado` y `salida` llegan en null hasta que ocurren. `espera` solo
+ * viene mientras la orden está EN_ESPERA.
  */
 export interface SeguimientoApi {
   lavadero: string;
@@ -28,6 +44,7 @@ export interface SeguimientoApi {
   salida: string | null;
   puedeCalificar: boolean;
   calificacion: CalificacionApi | null;
+  espera: EsperaSeguimientoApi | null;
 }
 
 /** El código del link de una orden (GET /ordenes/{id}/seguimiento). */

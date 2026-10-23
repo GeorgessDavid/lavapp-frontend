@@ -5,10 +5,13 @@ import assert from "node:assert/strict";
 import {
   COMENTARIO_MAXIMO,
   armarCalificacion,
+  duracionLegible,
   etapasSeguimiento,
   etiquetaEstrellas,
   horariosSeguimiento,
   modoCalificacion,
+  resumenEspera,
+  seActualizaSolo,
   validarCalificacion,
 } from "./seguimiento.ts";
 
@@ -103,4 +106,59 @@ test("las estrellas se nombran en singular y plural", () => {
   assert.equal(etiquetaEstrellas(1), "1 estrella");
   assert.equal(etiquetaEstrellas(2), "2 estrellas");
   assert.equal(etiquetaEstrellas(5), "5 estrellas");
+});
+
+// HU-17: posición y espera estimada.
+const espera = {
+  posicion: 3,
+  esperaEstimadaMin: 25,
+  inicioEstimado: "2026-10-23T13:25:00Z",
+  puestosActivos: 2,
+  sinEstimacion: null,
+  calculadaEl: "2026-10-23T13:00:00Z",
+};
+
+test("la posición dice cuántos vehículos hay antes", () => {
+  assert.equal(resumenEspera(espera).posicion, "Hay 2 vehículos antes que el tuyo");
+  assert.equal(resumenEspera({ ...espera, posicion: 2 }).posicion, "Hay 1 vehículo antes que el tuyo");
+  assert.equal(resumenEspera({ ...espera, posicion: 1 }).posicion, "Sos el próximo en la fila");
+});
+
+test("la espera estimada se muestra con la hora de inicio", () => {
+  assert.deepEqual(resumenEspera(espera).espera, {
+    texto: "Empieza en unos 25 min",
+    inicio: "2026-10-23T13:25:00Z",
+  });
+});
+
+test("con espera cero puede empezar ya, sin hora", () => {
+  assert.deepEqual(resumenEspera({ ...espera, esperaEstimadaMin: 0 }).espera, {
+    texto: "Tu lavado puede empezar en cualquier momento",
+    inicio: null,
+  });
+});
+
+test("sin estimación no se inventa un tiempo, pero la posición sigue", () => {
+  const resumen = resumenEspera({
+    ...espera,
+    esperaEstimadaMin: null,
+    inicioEstimado: null,
+    sinEstimacion: "El lavadero no tiene puestos activos",
+  });
+  assert.equal(resumen.espera, null);
+  assert.equal(resumen.posicion, "Hay 2 vehículos antes que el tuyo");
+});
+
+test("las esperas largas se leen en horas", () => {
+  assert.equal(duracionLegible(45), "45 min");
+  assert.equal(duracionLegible(60), "1 h");
+  assert.equal(duracionLegible(95), "1 h 35 min");
+});
+
+test("solo se actualiza sola mientras el vehículo espera o se lava", () => {
+  assert.equal(seActualizaSolo("EN_ESPERA"), true);
+  assert.equal(seActualizaSolo("EN_PROGRESO"), true);
+  assert.equal(seActualizaSolo("LISTO"), false);
+  assert.equal(seActualizaSolo("ENTREGADO"), false);
+  assert.equal(seActualizaSolo("CANCELADO"), false);
 });

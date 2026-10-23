@@ -2,7 +2,11 @@
 // reglas de la calificación. Sin React ni fetch, para probarla con el runner de Node; por eso los
 // imports de lib van con extensión y los de tipos con `import type`.
 import type { EstadoOrdenApi, ServiceStage } from "./types.ts";
-import type { NuevaCalificacion, SeguimientoApi } from "./api-seguimiento.ts";
+import type {
+  EsperaSeguimientoApi,
+  NuevaCalificacion,
+  SeguimientoApi,
+} from "./api-seguimiento.ts";
 import { etapaDeOrden } from "./etapas.ts";
 import { stageLabel } from "./format.ts";
 
@@ -62,6 +66,55 @@ export function horariosSeguimiento(
     const valor = seguimiento[clave];
     return valor ? [{ clave, etiqueta, valor }] : [];
   });
+}
+
+/** Cada cuánto se vuelve a pedir el seguimiento mientras el vehículo está en el lavadero. */
+export const INTERVALO_ACTUALIZACION_MS = 15_000;
+
+/**
+ * Si el seguimiento puede cambiar solo: mientras espera o se lava, la posición, la espera y el
+ * estado cambian sin que el cliente haga nada. Listo, retirado o cancelado ya no se mueven solos.
+ */
+export function seActualizaSolo(estado: EstadoOrdenApi) {
+  return estado === "EN_ESPERA" || estado === "EN_PROGRESO";
+}
+
+/** "45 min", "1 h", "1 h 20 min". */
+export function duracionLegible(minutos: number) {
+  const horas = Math.floor(minutos / 60);
+  const resto = minutos % 60;
+  if (horas === 0) return `${resto} min`;
+  return resto === 0 ? `${horas} h` : `${horas} h ${resto} min`;
+}
+
+export interface ResumenEspera {
+  /** "Sos el próximo" o "Hay 2 vehículos antes que el tuyo". */
+  posicion: string;
+  /** La espera estimada, o null si no se pudo estimar: nunca se muestra un tiempo inventado. */
+  espera: { texto: string; inicio: string | null } | null;
+}
+
+/**
+ * Lo que se le dice al cliente sobre su lugar en la fila y cuánto falta (HU-17). La posición viene
+ * siempre; la espera solo cuando el backend pudo estimarla.
+ */
+export function resumenEspera(espera: EsperaSeguimientoApi): ResumenEspera {
+  const antes = espera.posicion - 1;
+  const posicion =
+    antes <= 0
+      ? "Sos el próximo en la fila"
+      : `Hay ${antes} ${antes === 1 ? "vehículo" : "vehículos"} antes que el tuyo`;
+  if (espera.esperaEstimadaMin === null) return { posicion, espera: null };
+  return {
+    posicion,
+    espera: {
+      texto:
+        espera.esperaEstimadaMin <= 0
+          ? "Tu lavado puede empezar en cualquier momento"
+          : `Empieza en unos ${duracionLegible(espera.esperaEstimadaMin)}`,
+      inicio: espera.esperaEstimadaMin > 0 ? espera.inicioEstimado : null,
+    },
+  };
 }
 
 /**
