@@ -18,6 +18,7 @@ import {
   Menu,
   ParkingCircle,
   Search,
+  Timer,
   Users,
   type LucideIcon,
 } from "lucide-react";
@@ -44,6 +45,7 @@ const nav: {
   { href: "/historial", label: "Historial", icon: History, feature: "HISTORIAL_BASICO" },
   { href: "/vehiculos", label: "Vehículos", icon: Users },
   { href: "/fidelizacion", label: "Fidelización", icon: Gift },
+  { href: "/servicios", label: "Servicios", icon: Timer, owner: true },
   { href: "/reportes", label: "Reportes", icon: BarChart3, owner: true },
   { href: "/plan", label: "Mi Plan", icon: BadgeDollarSign, owner: true },
 ];
