@@ -4,7 +4,9 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   DEMORA_MAX,
+  SIN_DATOS_PARA_ESTIMAR,
   indexarTiempos,
+  lecturaTiempo,
   mensajeDemora,
   posicionDestino,
   validarDemora,
@@ -52,4 +54,56 @@ test("los tiempos se buscan por orden", () => {
 test("el aviso de la demora dice si la cola se reorganizó", () => {
   assert.equal(mensajeDemora("AE123FG", 15, false), "Demora de 15 min registrada para AE123FG.");
   assert.match(mensajeDemora("AE123FG", 30, true), /La cola se reorganizó/);
+});
+
+// HU-17: el backend manda null lo que no pudo estimar; la cola no lo convierte en "ya".
+const tiempoBase = {
+  ordenId: 1,
+  estado: "EN_ESPERA",
+  posicion: 1,
+  demoraMin: 0,
+  inicioEstimado: "2026-10-23T13:00:00Z",
+  finEstimado: "2026-10-23T13:45:00Z",
+  esperaEstimadaMin: 0,
+  sinEstimacion: null,
+};
+
+test("en espera con todo estimado: hora de inicio y la espera", () => {
+  assert.deepEqual(lecturaTiempo({ ...tiempoBase, esperaEstimadaMin: 15 }), {
+    tipo: "estimado",
+    etiqueta: "Empieza",
+    hora: "2026-10-23T13:00:00Z",
+    esperaMin: 15,
+  });
+});
+
+test("en espera sin estimar: no dice que puede empezar ya, dice por qué", () => {
+  const lectura = lecturaTiempo({
+    ...tiempoBase,
+    inicioEstimado: null,
+    finEstimado: null,
+    esperaEstimadaMin: null,
+    sinEstimacion: "El lavadero no tiene puestos activos",
+  });
+  assert.deepEqual(lectura, { tipo: "sin-estimar", motivo: "El lavadero no tiene puestos activos" });
+});
+
+test("sin motivo del backend se usa uno genérico", () => {
+  const lectura = lecturaTiempo({ ...tiempoBase, inicioEstimado: null, esperaEstimadaMin: null });
+  assert.deepEqual(lectura, { tipo: "sin-estimar", motivo: SIN_DATOS_PARA_ESTIMAR });
+});
+
+test("en lavado: hora de fin, o sin estimar si el servicio no tiene duración", () => {
+  const enLavado = { ...tiempoBase, estado: "EN_PROGRESO", posicion: null };
+  assert.equal(lecturaTiempo(enLavado).etiqueta, "Termina");
+  assert.equal(lecturaTiempo(enLavado).esperaMin, null);
+  assert.equal(
+    lecturaTiempo({ ...enLavado, finEstimado: null, sinEstimacion: "Sin duración" }).tipo,
+    "sin-estimar",
+  );
+});
+
+test("un servicio sin duración en espera conserva su hora de inicio", () => {
+  const lectura = lecturaTiempo({ ...tiempoBase, finEstimado: null, sinEstimacion: "Sin duración" });
+  assert.equal(lectura.tipo, "estimado");
 });

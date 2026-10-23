@@ -15,7 +15,13 @@ import {
   type SeguimientoApi,
 } from "@/lib/api-seguimiento";
 import { time } from "@/lib/format";
-import { etapasSeguimiento, horariosSeguimiento } from "@/lib/seguimiento";
+import {
+  INTERVALO_ACTUALIZACION_MS,
+  etapasSeguimiento,
+  horariosSeguimiento,
+  resumenEspera,
+  seActualizaSolo,
+} from "@/lib/seguimiento";
 
 type Carga =
   | { tipo: "cargando" }
@@ -37,7 +43,12 @@ const fecha = (iso: string) =>
 /**
  * El seguimiento que ve el cliente en modo real (HU-43). Es una página pública: pide la orden al
  * backend con el código del link, sin el store ni la sesión del lavadero, y muestra el vehículo, las
- * etapas, los horarios que ya ocurrieron y la calificación.
+ * etapas, los horarios que ya ocurrieron y la calificación. Mientras el vehículo espera, también su
+ * lugar en la fila y cuánto falta para que empiece el lavado (HU-17).
+ *
+ * Mientras espera o se lava, la página vuelve a pedir el seguimiento cada
+ * INTERVALO_ACTUALIZACION_MS y al volver a la pestaña, así la posición, la espera y el estado se
+ * mantienen al día sin recargar. No hay aviso en vivo desde el backend.
  */
 export function SeguimientoCliente({ codigo }: { codigo: string }) {
   const [carga, setCarga] = useState<Carga>({ tipo: "cargando" });
@@ -58,6 +69,29 @@ export function SeguimientoCliente({ codigo }: { codigo: string }) {
       vigente = false;
     };
   }, [codigo, intento]);
+
+  const estado = carga.tipo === "listo" ? carga.seguimiento.estado : null;
+  useEffect(() => {
+    if (!estado || !seActualizaSolo(estado)) return;
+    let vigente = true;
+    function actualizar() {
+      if (document.visibilityState !== "visible") return;
+      fetchSeguimiento(codigo)
+        .then((seguimiento) => {
+          if (vigente) setCarga({ tipo: "listo", seguimiento });
+        })
+        .catch(() => {
+          // Un sondeo fallido no borra lo que se ve: se reintenta en el próximo.
+        });
+    }
+    const intervalo = window.setInterval(actualizar, INTERVALO_ACTUALIZACION_MS);
+    document.addEventListener("visibilitychange", actualizar);
+    return () => {
+      vigente = false;
+      window.clearInterval(intervalo);
+      document.removeEventListener("visibilitychange", actualizar);
+    };
+  }, [codigo, estado]);
 
   function reintentar() {
     setCarga({ tipo: "cargando" });
@@ -125,6 +159,8 @@ export function SeguimientoCliente({ codigo }: { codigo: string }) {
   const vehiculo = [s.marca, s.modelo].filter(Boolean).join(" ");
   const etapas = etapasSeguimiento(s.estado);
   const horarios = horariosSeguimiento(s);
+  const espera = s.estado === "EN_ESPERA" && s.espera ? s.espera : null;
+  const resumen = espera ? resumenEspera(espera) : null;
 
   return (
     <div className="min-h-screen bg-[#F4F7FC]">
@@ -156,6 +192,47 @@ export function SeguimientoCliente({ codigo }: { codigo: string }) {
               </div>
             ))}
           </dl>
+
+          {espera && resumen && (
+            <section
+              aria-label="Tu lugar en la fila"
+              aria-live="polite"
+              className="mt-5 rounded-2xl bg-[#6C5CE7]/5 p-4"
+            >
+              <div className="flex items-baseline gap-3">
+                <p className="text-4xl font-bold text-[#6C5CE7]">{espera.posicion}</p>
+                <div>
+                  <p className="text-[11px] uppercase tracking-wide text-slate-400">
+                    Tu lugar en la fila
+                  </p>
+                  <p className="text-sm font-medium text-slate-700">{resumen.posicion}</p>
+                </div>
+              </div>
+              {resumen.espera ? (
+                <div className="mt-3">
+                  <p className="text-sm font-semibold text-navy">
+                    {resumen.espera.texto}
+                    {resumen.espera.inicio && (
+                      <span className="font-normal text-slate-500">
+                        {" "}
+                        · cerca de las {time(resumen.espera.inicio)}
+                      </span>
+                    )}
+                  </p>
+                  <p className="text-[11px] text-slate-400">
+                    Es una estimación: puede cambiar si cambia la fila.
+                  </p>
+                </div>
+              ) : (
+                <p className="mt-3 text-sm text-slate-500">
+                  Todavía no podemos estimar cuánto falta. Tu lugar en la fila sí está al día.
+                </p>
+              )}
+              <p className="mt-2 text-[11px] text-slate-400">
+                Actualizado {time(espera.calculadaEl)} · se actualiza solo
+              </p>
+            </section>
+          )}
 
           {s.estado === "CANCELADO" ? (
             <p className="mt-5 rounded-2xl bg-slate-100 px-4 py-3 text-sm text-slate-600">
