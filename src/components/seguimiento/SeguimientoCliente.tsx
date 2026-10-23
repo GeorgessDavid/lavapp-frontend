@@ -18,6 +18,7 @@ import { time } from "@/lib/format";
 import {
   INTERVALO_ACTUALIZACION_MS,
   etapasSeguimiento,
+  falloSeguimiento,
   horariosSeguimiento,
   resumenEspera,
   seActualizaSolo,
@@ -26,11 +27,17 @@ import {
 type Carga =
   | { tipo: "cargando" }
   | { tipo: "inexistente" }
+  | { tipo: "vencido" }
+  | { tipo: "limitado" }
   | { tipo: "error" }
   | { tipo: "listo"; seguimiento: SeguimientoApi };
 
-const cargaFallida = (error: unknown): Carga =>
-  error instanceof ApiError && error.status === 404 ? { tipo: "inexistente" } : { tipo: "error" };
+const cargaFallida = (error: unknown): Carga => ({
+  tipo: falloSeguimiento(error instanceof ApiError ? error.status : null),
+});
+
+/** Un link que venció mientras el cliente lo miraba: se deja de mostrar lo que había. */
+const vencio = (error: unknown) => error instanceof ApiError && error.status === 410;
 
 const CALIFICACION_GUARDADA: AvisoCalificacion = {
   tipo: "exito",
@@ -46,9 +53,10 @@ const fecha = (iso: string) =>
  * etapas, los horarios que ya ocurrieron y la calificación. Mientras el vehículo espera, también su
  * lugar en la fila y cuánto falta para que empiece el lavado (HU-17).
  *
- * Mientras espera o se lava, la página vuelve a pedir el seguimiento cada
+ * Hasta que el vehículo se retira, la página vuelve a pedir el seguimiento cada
  * INTERVALO_ACTUALIZACION_MS y al volver a la pestaña, así la posición, la espera y el estado se
- * mantienen al día sin recargar. No hay aviso en vivo desde el backend.
+ * mantienen al día sin recargar, y si el link vence (HT-07) deja de mostrar los datos. No hay aviso
+ * en vivo desde el backend.
  */
 export function SeguimientoCliente({ codigo }: { codigo: string }) {
   const [carga, setCarga] = useState<Carga>({ tipo: "cargando" });
@@ -80,8 +88,10 @@ export function SeguimientoCliente({ codigo }: { codigo: string }) {
         .then((seguimiento) => {
           if (vigente) setCarga({ tipo: "listo", seguimiento });
         })
-        .catch(() => {
-          // Un sondeo fallido no borra lo que se ve: se reintenta en el próximo.
+        .catch((error: unknown) => {
+          // Si el link venció (el vehículo se retiró), se avisa; cualquier otra falla no borra lo
+          // que se ve y se reintenta en el próximo sondeo.
+          if (vigente && vencio(error)) setCarga({ tipo: "vencido" });
         });
     }
     const intervalo = window.setInterval(actualizar, INTERVALO_ACTUALIZACION_MS);
@@ -120,16 +130,27 @@ export function SeguimientoCliente({ codigo }: { codigo: string }) {
         // Un envío que se quedó sin respuesta pero sí se guardó se confirma como cualquier otro.
         if (!motivo && seguimiento.calificacion) setAviso(CALIFICACION_GUARDADA);
       })
-      .catch(() => {
-        // La tarjeta ya muestra el error del envío; no hay nada más que avisar.
+      .catch((error: unknown) => {
+        // Si el link venció se avisa; si no, la tarjeta ya muestra el error del envío.
+        if (vencio(error)) setCarga({ tipo: "vencido" });
       });
   }
 
-  if (carga.tipo === "inexistente") {
+  if (carga.tipo === "inexistente" || carga.tipo === "vencido") {
     return (
       <div className="mx-auto min-h-screen max-w-md bg-white p-6">
         <Logo />
-        <p className="mt-8 text-slate-500">No encontramos ese link de seguimiento.</p>
+        {carga.tipo === "inexistente" ? (
+          <p className="mt-8 text-slate-500">No encontramos ese link de seguimiento.</p>
+        ) : (
+          <div className="mt-8 text-slate-500">
+            <p className="font-semibold text-navy">Este link ya no está disponible.</p>
+            <p className="mt-1 text-sm">
+              El servicio terminó: el vehículo ya se retiró o la atención se canceló. Si tenés alguna
+              duda, consultá en el lavadero.
+            </p>
+          </div>
+        )}
       </div>
     );
   }
@@ -145,7 +166,11 @@ export function SeguimientoCliente({ codigo }: { codigo: string }) {
           </p>
         ) : (
           <div role="alert" className="mt-8 rounded-2xl bg-red-50 px-4 py-3 text-sm text-red-700">
-            <p>No pudimos cargar el seguimiento. Revisá tu conexión y volvé a intentar.</p>
+            <p>
+              {carga.tipo === "limitado"
+                ? "Hubo demasiadas consultas desde tu conexión. Esperá un minuto y volvé a intentar."
+                : "No pudimos cargar el seguimiento. Revisá tu conexión y volvé a intentar."}
+            </p>
             <button type="button" className="mt-2 font-semibold underline" onClick={reintentar}>
               Reintentar
             </button>

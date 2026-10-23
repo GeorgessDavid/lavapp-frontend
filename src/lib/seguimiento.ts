@@ -112,15 +112,33 @@ export function linkWhatsApp(destinatario: DestinatarioSeguimiento, url: string)
   return `https://wa.me/${telefono ?? ""}?text=${texto}`;
 }
 
+/**
+ * Por qué no se pudo mostrar el seguimiento, según el status del backend (HT-07):
+ * - "inexistente" (404): el link está mal o la orden no existe.
+ * - "vencido" (410): el vehículo ya se retiró o la orden se canceló; el link dejó de servir.
+ * - "limitado" (429): demasiadas consultas desde esa conexión; se puede reintentar en un minuto.
+ * - "error": cualquier otra cosa, incluida la falta de conexión.
+ */
+export type FalloSeguimiento = "inexistente" | "vencido" | "limitado" | "error";
+
+export function falloSeguimiento(status: number | null): FalloSeguimiento {
+  if (status === 404) return "inexistente";
+  if (status === 410) return "vencido";
+  if (status === 429) return "limitado";
+  return "error";
+}
+
 /** Cada cuánto se vuelve a pedir el seguimiento mientras el vehículo está en el lavadero. */
 export const INTERVALO_ACTUALIZACION_MS = 15_000;
 
 /**
  * Si el seguimiento puede cambiar solo: mientras espera o se lava, la posición, la espera y el
- * estado cambian sin que el cliente haga nada. Listo, retirado o cancelado ya no se mueven solos.
+ * estado cambian sin que el cliente haga nada; listo, hasta que lo retira, porque al retirarlo el
+ * link vence (HT-07) y la página tiene que dejar de mostrar sus datos. Retirado o cancelado ya no
+ * se mueven.
  */
 export function seActualizaSolo(estado: EstadoOrdenApi) {
-  return estado === "EN_ESPERA" || estado === "EN_PROGRESO";
+  return estado === "EN_ESPERA" || estado === "EN_PROGRESO" || estado === "LISTO";
 }
 
 /** "45 min", "1 h", "1 h 20 min". */
