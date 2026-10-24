@@ -35,6 +35,14 @@ con credenciales (`FRONTEND_ORIGINS`) y la cookie `SameSite=Lax` requiere el mis
 | `NEXT_PUBLIC_USE_MOCK`  | `true`                  | `false` para usar la API real             |
 | `NEXT_PUBLIC_API_URL`   | `http://localhost:8080` | URL base del back-end                     |
 
+## Ingresos sin reserva
+
+En modo real, `/ingresos` carga los clientes, vehículos y servicios del lavadero desde la API.
+Al confirmar un ingreso sin reserva, crea el cliente o vehículo si se ingresaron como nuevos y
+registra la orden con `POST /lavaderos/{id}/ordenes`; la orden aparece en `/cola` en estado
+`EN_ESPERA`. El lavadero debe tener al menos un servicio configurado para poder registrar ingresos.
+En modo demo, el formulario sigue usando los datos mock locales.
+
 ## Historial de servicios
 
 `/historial` consulta los servicios anteriores del lavadero de la sesión en el backend
@@ -121,14 +129,14 @@ abierta. Si desde una conexión se consulta demasiado (429), explica que espere 
 reintentar. La página no se indexa en buscadores y no manda su URL como Referer a otros sitios
 (`src/app/seguimiento/[token]/layout.tsx`).
 
-El link lo obtiene el coordinador (HU-53) desde la acción "Link" de cada vehículo en espera, en
+El link lo obtiene el coordinador (HU-53) desde la acción "Notificar" de cada vehículo en espera, en
 lavado o listo en `/cola`, sea espontáneo o con reserva, y también al confirmar la llegada de una
-reserva en `/ingresos`. El panel muestra la URL completa y deja copiarla, mandarla por WhatsApp
-(`wa.me` con el mensaje armado; un teléfono argentino de 10 dígitos pasa a 549 + número, y si no
-se reconoce WhatsApp se abre sin destinatario) y, donde el navegador tiene menú de compartir, usar
-ese menú. El mensaje solo lleva el nombre del cliente, su vehículo y el link (`mensajeSeguimiento`
-en `src/lib/seguimiento.ts`). En modo demo la página sigue usando los datos mock y el panel no
-muestra el link.
+reserva en `/ingresos`. El panel muestra la URL completa y deja copiarla o abrir WhatsApp con un
+mensaje precompletado que incluye el nombre del cliente, el ingreso, el servicio, el vehículo y el
+link. El teléfono argentino se normaliza para `wa.me`; si falta o no se reconoce, se muestra un
+aviso y no se abre WhatsApp sin destinatario. El operador revisa y envía el mensaje desde WhatsApp;
+LavApp no lo envía automáticamente. Donde el navegador tiene menú de compartir, también se puede
+usar ese menú. En modo demo la página sigue usando los datos mock y el panel no muestra el link.
 
 ## Getting Started
 

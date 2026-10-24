@@ -365,7 +365,7 @@ export default function ColaPage() {
           <button
             type="button"
             className="text-xs font-semibold text-[#6C5CE7]"
-            title="Copiar o enviar al cliente el link para seguir su vehículo"
+            title="Preparar un mensaje de WhatsApp para este cliente"
             onClick={() =>
               setLinkPara({
                 ordenId: orden.ordenId,
@@ -373,12 +373,13 @@ export default function ColaPage() {
                   nombre: orden.clienteNombre,
                   patente: orden.patente,
                   modelo: orden.modelo,
+                  servicio: orden.servicioNombre,
                   telefono: orden.clienteTelefono,
                 },
               })
             }
           >
-            Link
+            Notificar
           </button>
         )}
         {a?.estado === "EN_ESPERA" && (
@@ -690,7 +691,7 @@ const ESTADOS_CON_LINK: string[] = ["EN_ESPERA", "EN_PROGRESO", "LISTO"];
 
 type LinkParaOrden = { ordenId: number; destinatario: DestinatarioSeguimiento };
 
-/** HU-53: el link de seguimiento de una atención, para copiarlo o mandárselo al cliente. */
+/** HU-53: prepara el enlace de seguimiento y el mensaje manual de WhatsApp. */
 function LinkDialog({ ordenId, destinatario, onClose }: LinkParaOrden & { onClose: () => void }) {
   const dialogo = useRef<HTMLDialogElement>(null);
 
@@ -709,7 +710,7 @@ function LinkDialog({ ordenId, destinatario, onClose }: LinkParaOrden & { onClos
       className="fixed inset-0 m-auto w-[calc(100%-2rem)] max-w-md rounded-2xl border border-slate-200 bg-white p-6 text-navy shadow-xl backdrop:bg-slate-900/40"
     >
       <h2 id="link-titulo" className="text-lg font-bold">
-        Seguimiento del cliente
+        Notificar al cliente
       </h2>
       <div className="mt-2 flex items-center gap-2 text-sm text-slate-500">
         {destinatario.nombre} · <Plate value={destinatario.patente} />

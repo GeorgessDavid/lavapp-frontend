@@ -96,6 +96,7 @@ export interface ReservaApi {
   lavaderoId: number;
   clienteId: number;
   clienteNombre: string;
+  clienteTelefono: string;
   vehiculoId: number;
   patente: string;
   servicioId: number;
@@ -294,6 +295,16 @@ export async function fetchOrdenes(
   return request<OrdenColaApi[]>(
     `/lavaderos/${lavaderoId}/ordenes?estado=${estado}`,
   );
+}
+
+export function crearOrdenTrabajo(
+  lavaderoId: number,
+  payload: { clienteId: number; vehiculoId: number; servicioId: number },
+): Promise<OrdenColaApi> {
+  return request<OrdenColaApi>(`/lavaderos/${lavaderoId}/ordenes`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
 }
 
 /**
