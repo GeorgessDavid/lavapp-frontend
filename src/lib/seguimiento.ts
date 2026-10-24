@@ -84,11 +84,6 @@ export function telefonoWhatsApp(telefono: string | null | undefined): string | 
   const digitos = telefono.replace(/\D/g, "");
   if (/^549\d{10}$/.test(digitos)) return digitos;
   if (/^54\d{10}$/.test(digitos)) return `549${digitos.slice(2)}`;
-  const celularLocal = digitos.match(/^0(\d{2,4})15(\d{6,8})$/);
-  if (celularLocal) {
-    const numeroNacional = `${celularLocal[1]}${celularLocal[2]}`;
-    if (numeroNacional.length === 10) return `549${numeroNacional}`;
-  }
   if (/^0\d{10}$/.test(digitos)) return `549${digitos.slice(1)}`;
   if (/^\d{10}$/.test(digitos)) return `549${digitos}`;
   return null;
@@ -98,32 +93,23 @@ export function telefonoWhatsApp(telefono: string | null | undefined): string | 
 export interface DestinatarioSeguimiento {
   nombre: string;
   patente: string;
-  servicio: string;
   modelo?: string | null;
   telefono?: string | null;
 }
 
-/** El mensaje que recibe el cliente con el link de seguimiento de su ingreso. */
+/** El mensaje que recibe el cliente con su link. Solo lleva datos de él y de su vehículo. */
 export function mensajeSeguimiento(destinatario: DestinatarioSeguimiento, url: string) {
   const nombre = destinatario.nombre.trim().split(/\s+/)[0];
-  const vehiculo = [
-    destinatario.modelo?.trim(),
-    destinatario.patente ? `(${destinatario.patente})` : "",
-  ].filter(Boolean).join(" ");
+  const vehiculo = [destinatario.modelo?.trim(), destinatario.patente].filter(Boolean).join(" ");
   const saludo = nombre ? `Hola ${nombre}` : "Hola";
-  const servicio = destinatario.servicio.trim();
-  const ingreso = servicio
-    ? `Registramos el ingreso de tu ${vehiculo} para el servicio ${servicio}.`
-    : `Registramos el ingreso de tu ${vehiculo}.`;
-  return `${saludo}. ${ingreso}\nPodés consultar el estado y el tiempo estimado de tu vehículo acá:\n${url}\n¡Gracias por elegirnos!`;
+  return `${saludo}, podés seguir el lavado de tu ${vehiculo} desde este link: ${url}`;
 }
 
-/** El link para abrir WhatsApp con el mensaje listo, solo si el teléfono se puede reconocer. */
-export function linkWhatsApp(destinatario: DestinatarioSeguimiento, url: string): string | null {
+/** El link para abrir WhatsApp con el mensaje listo, al teléfono del cliente si se reconoce. */
+export function linkWhatsApp(destinatario: DestinatarioSeguimiento, url: string) {
   const telefono = telefonoWhatsApp(destinatario.telefono);
-  if (!telefono) return null;
   const texto = encodeURIComponent(mensajeSeguimiento(destinatario, url));
-  return `https://wa.me/${telefono}?text=${texto}`;
+  return `https://wa.me/${telefono ?? ""}?text=${texto}`;
 }
 
 /**
