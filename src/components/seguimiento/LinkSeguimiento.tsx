@@ -35,6 +35,7 @@ export function LinkSeguimiento({
   const [copia, setCopia] = useState<"copiado" | "error" | null>(null);
   const puedeCompartir = useSyncExternalStore(sinSuscripcion, hayShare, sinShare);
   const tituloId = useId();
+  const whatsapp = linkWhatsApp(destinatario, link.tipo === "listo" ? link.url : "");
 
   useEffect(() => {
     let vigente = true;
@@ -101,15 +102,22 @@ export function LinkSeguimiento({
               <Copy className="h-4 w-4" aria-hidden="true" />
               Copiar link
             </button>
-            <a
-              className="btn-ghost"
-              href={linkWhatsApp(destinatario, link.url)}
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              <MessageCircle className="h-4 w-4" aria-hidden="true" />
-              Enviar por WhatsApp
-            </a>
+            {whatsapp ? (
+              <a
+                className="btn-ghost"
+                href={whatsapp}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <MessageCircle className="h-4 w-4" aria-hidden="true" />
+                Abrir WhatsApp
+              </a>
+            ) : (
+              <p role="alert" className="w-full text-sm text-amber-700">
+                No se puede preparar WhatsApp: revisá que el teléfono del cliente sea un número
+                argentino válido.
+              </p>
+            )}
             {puedeCompartir && (
               <button type="button" className="btn-ghost" onClick={() => void compartir(link.url)}>
                 <Share2 className="h-4 w-4" aria-hidden="true" />
