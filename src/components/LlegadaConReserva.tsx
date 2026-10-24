@@ -151,12 +151,7 @@ export function LlegadaConReserva({ lavaderoId }: { lavaderoId: number }) {
       <p className="mt-1">Reserva #{llegada.id} vinculada al ingreso #{llegada.ordenTrabajoId}. El vehículo quedó en espera.</p>
       {!apiConfig.USE_MOCK && llegada.ordenTrabajoId !== null && <div className="mt-3 border-t border-emerald-200 pt-3">
         <LinkSeguimiento key={llegada.ordenTrabajoId} ordenId={llegada.ordenTrabajoId}
-          destinatario={{
-            nombre: llegada.clienteNombre,
-            patente: llegada.patente,
-            servicio: llegada.servicioNombre,
-            telefono: llegada.clienteTelefono,
-          }} />
+          destinatario={{ nombre: llegada.clienteNombre, patente: llegada.patente }} />
       </div>}
       <Link href="/reservas" className="mt-3 inline-block font-semibold underline">Ver agenda de reservas</Link>
     </div>}

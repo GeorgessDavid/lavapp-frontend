@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useMemo, useState } from "react";
 import { Car, Clock, Droplets, Sparkles } from "lucide-react";
 import { Card, KpiCard } from "@/components/ui/Card";
 import { Plate, StageBadge } from "@/components/ui/badges";
@@ -8,21 +8,6 @@ import { useApp } from "@/lib/store";
 import { useLookups } from "@/lib/lookups";
 import { money, time } from "@/lib/format";
 import { LlegadaConReserva } from "@/components/LlegadaConReserva";
-import {
-  ApiError,
-  apiConfig,
-  crearClienteReserva,
-  crearOrdenTrabajo,
-  crearVehiculoReserva,
-  fetchOrdenes,
-  listarClientesReserva,
-  listarServiciosReserva,
-  listarVehiculosReserva,
-  type ReservaCliente,
-  type ReservaServicio,
-  type ReservaVehiculo,
-} from "@/lib/api";
-import type { Cliente, OrdenColaApi, Servicio, Vehiculo } from "@/lib/types";
 
 type CampoIngreso =
   | "vehiculo"
@@ -37,24 +22,9 @@ type CampoIngreso =
 type ErroresIngreso = Partial<Record<CampoIngreso, string>>;
 
 export default function IngresosPage() {
-  const {
-    atenciones,
-    vehiculos: vehiculosDemo,
-    clientes: clientesDemo,
-    servicios: serviciosDemo,
-    boxes,
-    checkIn,
-    user,
-  } = useApp();
+  const { atenciones, vehiculos, clientes, servicios, boxes, checkIn, user } = useApp();
   const lavaderoId = user?.lavaderoId ?? Number(process.env.NEXT_PUBLIC_LAVADERO_ID ?? "1");
   const { cliente, vehiculo, serviciosDe } = useLookups();
-  const [clientesBackend, setClientesBackend] = useState<ReservaCliente[]>([]);
-  const [vehiculosBackend, setVehiculosBackend] = useState<ReservaVehiculo[]>([]);
-  const [serviciosBackend, setServiciosBackend] = useState<ReservaServicio[]>([]);
-  const [ordenesBackend, setOrdenesBackend] = useState<OrdenColaApi[]>([]);
-  const [cargandoCatalogo, setCargandoCatalogo] = useState(!apiConfig.USE_MOCK);
-  const [errorCatalogo, setErrorCatalogo] = useState("");
-  const [enviando, setEnviando] = useState(false);
   const [modoVehiculo, setModoVehiculo] = useState<"existente" | "nuevo">("existente");
   const [busquedaVehiculo, setBusquedaVehiculo] = useState("");
   const [vehiculoId, setVehiculoId] = useState("");
@@ -70,95 +40,6 @@ export default function IngresosPage() {
   const [errores, setErrores] = useState<ErroresIngreso>({});
   const [errorEnvio, setErrorEnvio] = useState("");
   const [exito, setExito] = useState("");
-
-  useEffect(() => {
-    const idLavadero = user?.lavaderoId;
-    if (apiConfig.USE_MOCK || idLavadero === undefined) return;
-    let vigente = true;
-    const timeout = window.setTimeout(() => {
-      setCargandoCatalogo(true);
-      setErrorCatalogo("");
-      void Promise.all([
-        listarClientesReserva(idLavadero),
-        listarServiciosReserva(idLavadero),
-        fetchOrdenes(idLavadero, "EN_ESPERA"),
-        fetchOrdenes(idLavadero, "EN_PROGRESO"),
-        fetchOrdenes(idLavadero, "LISTO"),
-      ])
-        .then(async ([clientesReales, serviciosReales, enEspera, enLavado, listos]) => {
-          const vehiculosPorCliente = await Promise.all(
-            clientesReales.map((item) => listarVehiculosReserva(idLavadero, item.id)),
-          );
-          if (!vigente) return;
-          setClientesBackend(clientesReales);
-          setVehiculosBackend(vehiculosPorCliente.flat());
-          setServiciosBackend(serviciosReales);
-          setOrdenesBackend([...enEspera, ...enLavado, ...listos]);
-        })
-        .catch((error: unknown) => {
-          if (!vigente) return;
-          setErrorCatalogo(
-            error instanceof ApiError
-              ? error.message
-              : "No se pudieron cargar los clientes, vehículos y servicios del lavadero.",
-          );
-        })
-        .finally(() => {
-          if (vigente) setCargandoCatalogo(false);
-        });
-    }, 0);
-
-    return () => {
-      vigente = false;
-      window.clearTimeout(timeout);
-    };
-  }, [user?.lavaderoId]);
-
-  const clientes = useMemo<Cliente[]>(
-    () =>
-      apiConfig.USE_MOCK
-        ? clientesDemo
-        : clientesBackend.map((item) => ({
-            id: String(item.id),
-            nombre: item.nombre,
-            apellido: "",
-            telefono: item.telefono,
-            email: "",
-            fechaRegistro: "",
-            fechaUltimaVisita: "",
-            frecuente: false,
-            inactivo: false,
-          })),
-    [clientesBackend, clientesDemo],
-  );
-  const vehiculos = useMemo<Vehiculo[]>(
-    () =>
-      apiConfig.USE_MOCK
-        ? vehiculosDemo
-        : vehiculosBackend.map((item) => ({
-            id: String(item.id),
-            patente: item.patente,
-            marca: item.marca ?? "",
-            modelo: item.modelo ?? "",
-            tipo: "Auto",
-            clienteId: String(item.clienteId),
-            color: "#6C5CE7",
-          })),
-    [vehiculosBackend, vehiculosDemo],
-  );
-  const servicios = useMemo<Servicio[]>(
-    () =>
-      apiConfig.USE_MOCK
-        ? serviciosDemo
-        : serviciosBackend.map((item) => ({
-            id: String(item.id),
-            nombre: item.nombre,
-            descripcion: "",
-            precio: item.precio,
-            duracionMin: item.duracionMin,
-          })),
-    [serviciosBackend, serviciosDemo],
-  );
 
   function limpiarMensajeCampo(campo: CampoIngreso) {
     setErrores((actuales) => {
@@ -211,23 +92,11 @@ export default function IngresosPage() {
     setObs("");
   }
 
-  async function onSubmit(e: FormEvent) {
+  function onSubmit(e: FormEvent) {
     e.preventDefault();
     setErrores({});
     setErrorEnvio("");
     setExito("");
-    if (!apiConfig.USE_MOCK && cargandoCatalogo) {
-      setErrorEnvio("Esperá a que terminen de cargar los datos del lavadero.");
-      return;
-    }
-    if (!apiConfig.USE_MOCK && errorCatalogo) {
-      setErrorEnvio("No se pudieron cargar los datos reales. Reintentá la carga antes de ingresar.");
-      return;
-    }
-    if (!apiConfig.USE_MOCK && serviciosBackend.length === 0) {
-      setErrorEnvio("Este lavadero todavía no tiene servicios configurados; no se puede crear el ingreso.");
-      return;
-    }
 
     const patenteFinal = (vehiculoSeleccionado?.patente ?? patente).trim().toUpperCase();
     const patenteCompacta = patenteFinal.replace(/\s/g, "");
@@ -291,86 +160,32 @@ export default function IngresosPage() {
       return;
     }
 
-    setEnviando(true);
     try {
-      if (apiConfig.USE_MOCK) {
-        checkIn({
-          patente: patenteFinal,
-          vehiculoId: vehiculoSeleccionado?.id,
-          clienteId: vehiculoSeleccionado?.clienteId ?? (nuevoCliente ? undefined : clienteId),
-          clienteNombre: nombreFinal,
-          telefono: telefonoFinal,
-          marca: marcaFinal,
-          modelo: modeloFinal,
-          servicioId,
-          observaciones: obs,
-        });
-      } else {
-        let clienteReal = vehiculoSeleccionado
-          ? clientesBackend.find((item) => String(item.id) === vehiculoSeleccionado.clienteId)
-          : nuevoCliente
-            ? undefined
-            : clientesBackend.find((item) => String(item.id) === clienteId);
-
-        if (!clienteReal && !nuevoCliente) {
-          throw new Error("Seleccioná un cliente válido para este lavadero.");
-        }
-        if (nuevoCliente) {
-          clienteReal = await crearClienteReserva(lavaderoId, {
-            nombre: nombreFinal,
-            telefono: telefonoFinal,
-          });
-          setClientesBackend((actuales) => [...actuales, clienteReal!]);
-        }
-
-        const vehiculoReal = vehiculoSeleccionado
-          ? vehiculosBackend.find((item) => String(item.id) === vehiculoSeleccionado.id)
-          : await crearVehiculoReserva(lavaderoId, clienteReal!.id, {
-              patente: patenteFinal,
-              marca: marcaFinal,
-              modelo: modeloFinal,
-            });
-        if (!vehiculoReal || !clienteReal) {
-          throw new Error("No se pudo resolver el cliente y vehículo del ingreso.");
-        }
-        if (!vehiculoSeleccionado) {
-          setVehiculosBackend((actuales) => [...actuales, vehiculoReal]);
-        }
-
-        const orden = await crearOrdenTrabajo(lavaderoId, {
-          clienteId: clienteReal.id,
-          vehiculoId: vehiculoReal.id,
-          servicioId: Number(servicioId),
-        });
-        setOrdenesBackend((actuales) => [orden, ...actuales]);
-        setExito(`Ingreso #${orden.ordenId} registrado. El vehículo quedó en la cola en espera.`);
-      }
+      checkIn({
+        patente: patenteFinal,
+        vehiculoId: vehiculoSeleccionado?.id,
+        clienteId: vehiculoSeleccionado?.clienteId ?? (nuevoCliente ? undefined : clienteId),
+        clienteNombre: nombreFinal,
+        telefono: telefonoFinal,
+        marca: marcaFinal,
+        modelo: modeloFinal,
+        servicioId,
+        observaciones: obs,
+      });
       limpiarFormulario();
+      setExito(`Ingreso registrado correctamente para ${patenteFinal}.`);
     } catch (error) {
       setErrorEnvio(
         error instanceof Error
           ? error.message
           : "No se pudo registrar el ingreso. Revisá los datos e intentá nuevamente.",
       );
-    } finally {
-      setEnviando(false);
     }
   }
 
   const ocupacion = Math.round(
     (boxes.filter((b) => b.estado === "OCUPADO").length / boxes.length) * 100,
   );
-  const ordenesActivas = ordenesBackend.filter(
-    (orden): orden is OrdenColaApi & { estado: "EN_ESPERA" | "EN_PROGRESO" | "LISTO" } =>
-      orden.estado === "EN_ESPERA" ||
-      orden.estado === "EN_PROGRESO" ||
-      orden.estado === "LISTO",
-  );
-  const estadoAtencion = {
-    EN_ESPERA: "EN_ESPERA",
-    EN_PROGRESO: "LAVADO",
-    LISTO: "LISTO",
-  } as const;
 
   return (
     <div className="space-y-5">
@@ -384,28 +199,24 @@ export default function IngresosPage() {
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <KpiCard
-          label={apiConfig.USE_MOCK ? "Ingresos del día" : "Órdenes activas"}
-          value={apiConfig.USE_MOCK ? atenciones.length : ordenesActivas.length}
+          label="Ingresos del día"
+          value={atenciones.length}
           tone="purple"
           icon={<Car className="h-5 w-5" />}
         />
         <KpiCard
           label="En espera"
-          value={
-            apiConfig.USE_MOCK
-              ? atenciones.filter((a) => a.estado === "EN_ESPERA").length
-              : ordenesBackend.filter((orden) => orden.estado === "EN_ESPERA").length
-          }
+          value={atenciones.filter((a) => a.estado === "EN_ESPERA").length}
           tone="orange"
           icon={<Clock className="h-5 w-5" />}
         />
         <KpiCard
           label="En proceso"
-          value={apiConfig.USE_MOCK
-            ? atenciones.filter((a) =>
-                ["LAVADO", "INTERIOR", "TERMINACIONES"].includes(a.estado),
-              ).length
-            : ordenesBackend.filter((orden) => orden.estado === "EN_PROGRESO").length}
+          value={
+            atenciones.filter((a) =>
+              ["LAVADO", "INTERIOR", "TERMINACIONES"].includes(a.estado),
+            ).length
+          }
           tone="teal"
           icon={<Droplets className="h-5 w-5" />}
         />
@@ -422,21 +233,6 @@ export default function IngresosPage() {
       <div className="grid gap-5 xl:grid-cols-[1.2fr_0.8fr]">
         <Card title="Ingreso sin reserva">
           <form noValidate onSubmit={onSubmit} className="grid gap-4 sm:grid-cols-2">
-            {!apiConfig.USE_MOCK && cargandoCatalogo && (
-              <p role="status" className="sm:col-span-2 text-sm text-slate-500">
-                Cargando los clientes, vehículos y servicios del lavadero…
-              </p>
-            )}
-            {!apiConfig.USE_MOCK && errorCatalogo && (
-              <p role="alert" className="sm:col-span-2 rounded-xl bg-red-50 p-3 text-sm text-red-700">
-                {errorCatalogo}
-              </p>
-            )}
-            {!apiConfig.USE_MOCK && !cargandoCatalogo && !errorCatalogo && servicios.length === 0 && (
-              <p role="alert" className="sm:col-span-2 rounded-xl bg-amber-50 p-3 text-sm text-amber-800">
-                Este lavadero todavía no tiene servicios configurados. No se puede registrar un ingreso hasta que haya al menos uno.
-              </p>
-            )}
             {errorEnvio && (
               <p
                 role="alert"
@@ -790,12 +586,7 @@ export default function IngresosPage() {
               />
             </div>
             <div className="sm:col-span-2">
-              <button
-                className="btn-primary"
-                disabled={enviando || cargandoCatalogo || (!apiConfig.USE_MOCK && servicios.length === 0)}
-              >
-                {enviando ? "Registrando ingreso…" : "Confirmar ingreso"}
-              </button>
+              <button className="btn-primary">Confirmar ingreso</button>
             </div>
           </form>
         </Card>
@@ -819,50 +610,27 @@ export default function IngresosPage() {
               </p>
             </div>
           </Card>
-          <Card title={apiConfig.USE_MOCK ? "Ingresos del día" : "Órdenes activas"}>
+          <Card title="Ingresos del día">
             <ul className="max-h-72 space-y-2 overflow-auto">
-              {apiConfig.USE_MOCK
-                ? atenciones.map((a) => {
-                    const v = vehiculo(a.vehiculoId);
-                    const c = cliente(a.clienteId);
-                    return (
-                      <li
-                        key={a.id}
-                        className="flex items-center justify-between gap-2 rounded-xl bg-slate-50 px-3 py-2"
-                      >
-                        <div>
-                          <Plate value={v?.patente ?? "—"} />
-                          <p className="mt-1 text-xs text-slate-500">
-                            {c?.nombre} · {serviciosDe(a.servicioIds)} ·{" "}
-                            {time(a.fechaIngreso)}
-                          </p>
-                        </div>
-                        <StageBadge estado={a.estado} />
-                      </li>
-                    );
-                  })
-                : ordenesActivas
-                    .slice()
-                    .sort((a, b) => b.ingreso.localeCompare(a.ingreso))
-                    .map((orden) => (
-                      <li
-                        key={orden.ordenId}
-                        className="flex items-center justify-between gap-2 rounded-xl bg-slate-50 px-3 py-2"
-                      >
-                        <div>
-                          <Plate value={orden.patente} />
-                          <p className="mt-1 text-xs text-slate-500">
-                            {orden.clienteNombre} · {orden.servicioNombre} · {time(orden.ingreso)}
-                          </p>
-                        </div>
-                        <StageBadge estado={estadoAtencion[orden.estado as keyof typeof estadoAtencion]} />
-                      </li>
-                    ))}
-              {!apiConfig.USE_MOCK && ordenesActivas.length === 0 && (
-                <li className="py-3 text-center text-sm text-slate-500">
-                  No hay órdenes activas en el lavadero.
-                </li>
-              )}
+              {atenciones.map((a) => {
+                const v = vehiculo(a.vehiculoId);
+                const c = cliente(a.clienteId);
+                return (
+                  <li
+                    key={a.id}
+                    className="flex items-center justify-between gap-2 rounded-xl bg-slate-50 px-3 py-2"
+                  >
+                    <div>
+                      <Plate value={v?.patente ?? "—"} />
+                      <p className="mt-1 text-xs text-slate-500">
+                        {c?.nombre} · {serviciosDe(a.servicioIds)} ·{" "}
+                        {time(a.fechaIngreso)}
+                      </p>
+                    </div>
+                    <StageBadge estado={a.estado} />
+                  </li>
+                );
+              })}
             </ul>
           </Card>
         </div>

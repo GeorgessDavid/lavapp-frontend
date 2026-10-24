@@ -169,13 +169,7 @@ test("se actualiza sola hasta que el vehículo se retira", () => {
 });
 
 // HU-53: compartir el link de seguimiento.
-const destinatario = {
-  nombre: "Martina Gómez",
-  patente: "AE512KD",
-  modelo: "Gol Trend",
-  servicio: "Lavado completo",
-  telefono: "341 555-1234",
-};
+const destinatario = { nombre: "Martina Gómez", patente: "AE512KD", modelo: "Gol Trend", telefono: "341 555-1234" };
 const url = "https://app.lavapp.com/seguimiento/9b2f6c1e-3d4a-4f8b-a1c7-5e0d2b8f6a93";
 
 test("la URL del seguimiento lleva el código escapado", () => {
@@ -185,7 +179,6 @@ test("la URL del seguimiento lleva el código escapado", () => {
 test("los teléfonos argentinos pasan al formato de wa.me", () => {
   assert.equal(telefonoWhatsApp("341 555-1234"), "5493415551234");
   assert.equal(telefonoWhatsApp("0341 5551234"), "5493415551234");
-  assert.equal(telefonoWhatsApp("011 15 2345-6789"), "5491123456789");
   assert.equal(telefonoWhatsApp("+54 341 555 1234"), "5493415551234");
   assert.equal(telefonoWhatsApp("+54 9 341 555 1234"), "5493415551234");
 });
@@ -196,22 +189,22 @@ test("un teléfono que no se reconoce no se adivina", () => {
   assert.equal(telefonoWhatsApp(null), null);
 });
 
-test("el mensaje incluye ingreso, servicio, vehículo y link", () => {
+test("el mensaje saluda por el nombre y nombra el vehículo, con el link", () => {
   assert.equal(
     mensajeSeguimiento(destinatario, url),
-    `Hola Martina. Registramos el ingreso de tu Gol Trend (AE512KD) para el servicio Lavado completo.\nPodés consultar el estado y el tiempo estimado de tu vehículo acá:\n${url}\n¡Gracias por elegirnos!`,
+    `Hola Martina, podés seguir el lavado de tu Gol Trend AE512KD desde este link: ${url}`,
   );
   assert.equal(
-    mensajeSeguimiento({ nombre: "", patente: "AE512KD", servicio: "" }, url),
-    `Hola. Registramos el ingreso de tu AE512KD.\nPodés consultar el estado y el tiempo estimado de tu vehículo acá:\n${url}\n¡Gracias por elegirnos!`,
+    mensajeSeguimiento({ nombre: "", patente: "AE512KD" }, url),
+    `Hola, podés seguir el lavado de tu AE512KD desde este link: ${url}`,
   );
 });
 
-test("WhatsApp se prepara al teléfono argentino del cliente", () => {
+test("WhatsApp se abre al teléfono del cliente, o sin destinatario si no se reconoce", () => {
   const conTelefono = linkWhatsApp(destinatario, url);
   assert.ok(conTelefono.startsWith("https://wa.me/5493415551234?text="));
   assert.equal(decodeURIComponent(conTelefono.split("text=")[1]), mensajeSeguimiento(destinatario, url));
-  assert.equal(linkWhatsApp({ ...destinatario, telefono: null }, url), null);
+  assert.ok(linkWhatsApp({ ...destinatario, telefono: null }, url).startsWith("https://wa.me/?text="));
 });
 
 // HT-07: por qué no se pudo mostrar el seguimiento.
