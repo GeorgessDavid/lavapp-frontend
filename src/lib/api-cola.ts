@@ -39,6 +39,9 @@ export interface DemoraApi {
   registradaEl: string;
   demoraTotalMin: number;
   colaReordenada: boolean;
+  estimacionActualizada: boolean;
+  inicioEstimado: string | null;
+  finEstimado: string | null;
 }
 
 /**

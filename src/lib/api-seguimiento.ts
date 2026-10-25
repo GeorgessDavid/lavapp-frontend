@@ -20,7 +20,16 @@ export interface EsperaSeguimientoApi {
   posicion: number;
   esperaEstimadaMin: number | null;
   inicioEstimado: string | null;
+  finEstimado: string | null;
   puestosActivos: number;
+  sinEstimacion: string | null;
+  calculadaEl: string;
+}
+
+/** Inicio y fin estimados de la orden activa, recalculados con la misma cola operativa. */
+export interface EstimacionSeguimientoApi {
+  inicioEstimado: string | null;
+  finEstimado: string | null;
   sinEstimacion: string | null;
   calculadaEl: string;
 }
@@ -45,6 +54,7 @@ export interface SeguimientoApi {
   puedeCalificar: boolean;
   calificacion: CalificacionApi | null;
   espera: EsperaSeguimientoApi | null;
+  estimacion: EstimacionSeguimientoApi | null;
 }
 
 /** El código del link de una orden (GET /ordenes/{id}/seguimiento). */

@@ -24,6 +24,7 @@ import {
   fetchTiemposCola,
   moverEnCola,
   registrarDemora,
+  type DemoraApi,
   type TiempoEstimadoApi,
 } from "@/lib/api-cola";
 import {
@@ -37,7 +38,7 @@ import {
   validarDemora,
 } from "@/lib/cola-operativa";
 import { estaEnLavado, tieneEtapaIntermedia } from "@/lib/etapas";
-import type { DestinatarioSeguimiento } from "@/lib/seguimiento";
+import { mensajeDemoraSeguimiento, type DestinatarioSeguimiento } from "@/lib/seguimiento";
 import {
   armarFilasBackend,
   armarFilasLocales,
@@ -85,7 +86,11 @@ export default function ColaPage() {
   // HU-16: la fila que se está moviendo; mientras tanto no se acepta otro movimiento.
   const [moviendo, setMoviendo] = useState<string | null>(null);
   // HU-28: la orden a la que se le está registrando una demora (abre el diálogo).
-  const [demoraPara, setDemoraPara] = useState<{ ordenId: number; patente: string } | null>(null);
+  const [demoraPara, setDemoraPara] = useState<{
+    ordenId: number;
+    destinatario: DestinatarioSeguimiento;
+    servicio: string;
+  } | null>(null);
   // HU-53: el link de seguimiento de cualquier atención activa, espontánea o con reserva.
   const [linkPara, setLinkPara] = useState<LinkParaOrden | null>(null);
   const lavaderoId = user?.lavaderoId;
@@ -356,7 +361,18 @@ export default function ColaPage() {
             type="button"
             className="text-xs font-semibold text-orange-600"
             title="Registrar una demora: se recalculan los tiempos y, si hace falta, la cola"
-            onClick={() => setDemoraPara({ ordenId: orden.ordenId, patente: orden.patente })}
+            onClick={() =>
+              setDemoraPara({
+                ordenId: orden.ordenId,
+                destinatario: {
+                  nombre: orden.clienteNombre,
+                  patente: orden.patente,
+                  modelo: orden.modelo,
+                  telefono: orden.clienteTelefono,
+                },
+                servicio: orden.servicioNombre,
+              })
+            }
           >
             Demora
           </button>
@@ -671,11 +687,15 @@ export default function ColaPage() {
       {demoraPara && (
         <DemoraDialog
           ordenId={demoraPara.ordenId}
-          patente={demoraPara.patente}
+          destinatario={demoraPara.destinatario}
+          servicio={demoraPara.servicio}
           onClose={() => setDemoraPara(null)}
-          onGuardada={(mensaje) => {
-            notificar(mensaje);
-            setDemoraPara(null);
+          onGuardada={(demora) => {
+            notificar(mensajeDemora(
+              demoraPara.destinatario.patente,
+              demora.minutos,
+              demora.colaReordenada,
+            ));
             void cargarColaBackend();
           }}
         />
@@ -732,20 +752,24 @@ function LinkDialog({ ordenId, destinatario, onClose }: LinkParaOrden & { onClos
  */
 function DemoraDialog({
   ordenId,
-  patente,
+  destinatario,
+  servicio,
   onClose,
   onGuardada,
 }: {
   ordenId: number;
-  patente: string;
+  destinatario: DestinatarioSeguimiento;
+  servicio: string;
   onClose: () => void;
-  onGuardada: (mensaje: string) => void;
+  onGuardada: (demora: DemoraApi) => void;
 }) {
   const dialogo = useRef<HTMLDialogElement>(null);
   const [minutos, setMinutos] = useState("10");
   const [motivo, setMotivo] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [guardando, setGuardando] = useState(false);
+  const [demoraRegistrada, setDemoraRegistrada] = useState<DemoraApi | null>(null);
+  const finEstimado = demoraRegistrada?.finEstimado;
 
   useEffect(() => {
     dialogo.current?.showModal();
@@ -767,7 +791,9 @@ function DemoraDialog({
         minutos: cantidad,
         motivo: motivo.trim() || undefined,
       });
-      onGuardada(mensajeDemora(patente, demora.minutos, demora.colaReordenada));
+      setGuardando(false);
+      setDemoraRegistrada(demora);
+      onGuardada(demora);
     } catch (e) {
       setError(
         e instanceof ApiError
@@ -792,53 +818,98 @@ function DemoraDialog({
         Registrar demora
       </h2>
       <div className="mt-2 flex items-center gap-2 text-sm text-slate-500">
-        Vehículo <Plate value={patente} />
+        {destinatario.nombre} · <Plate value={destinatario.patente} /> · {servicio}
       </div>
-      <form onSubmit={(e) => void guardar(e)} className="mt-5">
-        <fieldset disabled={guardando} className="space-y-4">
-          <label className="block text-sm">
-            Minutos de demora
-            <input
-              className="field mt-1"
-              type="number"
-              inputMode="numeric"
-              min={DEMORA_MIN}
-              max={DEMORA_MAX}
-              step={1}
-              value={minutos}
-              onChange={(e) => setMinutos(e.target.value)}
-              required
-            />
-          </label>
-          <label className="block text-sm">
-            Motivo (opcional)
-            <input
-              className="field mt-1"
-              maxLength={MOTIVO_MAX}
-              placeholder="Ej.: tapizado muy sucio"
-              value={motivo}
-              onChange={(e) => setMotivo(e.target.value)}
-            />
-          </label>
-          <p className="text-xs text-slate-500">
-            Se recalculan los tiempos estimados y, si hace falta, la cola se reorganiza respetando las
-            reservas próximas. Los vehículos en lavado no cambian de lugar.
+      {demoraRegistrada ? (
+        <div className="mt-5 space-y-4">
+          <p role="status" className="rounded-xl bg-emerald-50 p-3 text-sm text-emerald-800">
+            Demora registrada. La cola y el seguimiento ya muestran los tiempos recalculados.
           </p>
-          {error && (
-            <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-700">
-              {error}
+          {demoraRegistrada.estimacionActualizada && finEstimado ? (
+            <>
+              <p className="text-sm font-semibold">
+                Nuevo horario estimado de finalización: {time(finEstimado)}
+                <span className="ml-2 font-normal text-slate-500">
+                  {new Date(finEstimado).toLocaleDateString("es-AR", {
+                    day: "2-digit",
+                    month: "2-digit",
+                    year: "numeric",
+                  })}
+                </span>
+              </p>
+              <LinkSeguimiento
+                key={demoraRegistrada.id}
+                ordenId={ordenId}
+                destinatario={destinatario}
+                mensaje={(url) =>
+                  mensajeDemoraSeguimiento(
+                    destinatario,
+                    servicio,
+                    finEstimado,
+                    url,
+                  )
+                }
+              />
+            </>
+          ) : (
+            <p className="text-sm text-slate-600">
+              El horario de finalización no cambió o no se puede estimar con los datos actuales;
+              no se prepara un aviso con una hora imprecisa.
             </p>
           )}
-          <div className="flex flex-wrap gap-3">
-            <button className="btn-primary" type="submit">
-              {guardando ? "Registrando…" : "Registrar demora"}
-            </button>
-            <button className="btn-ghost" type="button" onClick={onClose}>
-              Cancelar
+          <div className="flex justify-end">
+            <button type="button" className="btn-ghost" onClick={onClose}>
+              Cerrar
             </button>
           </div>
-        </fieldset>
-      </form>
+        </div>
+      ) : (
+        <form onSubmit={(e) => void guardar(e)} className="mt-5">
+          <fieldset disabled={guardando} className="space-y-4">
+            <label className="block text-sm">
+              Minutos de demora
+              <input
+                className="field mt-1"
+                type="number"
+                inputMode="numeric"
+                min={DEMORA_MIN}
+                max={DEMORA_MAX}
+                step={1}
+                value={minutos}
+                onChange={(e) => setMinutos(e.target.value)}
+                required
+              />
+            </label>
+            <label className="block text-sm">
+              Motivo (opcional)
+              <input
+                className="field mt-1"
+                maxLength={MOTIVO_MAX}
+                placeholder="Ej.: tapizado muy sucio"
+                value={motivo}
+                onChange={(e) => setMotivo(e.target.value)}
+              />
+            </label>
+            <p className="text-xs text-slate-500">
+              Se recalculan los tiempos estimados y, si hace falta, la cola se reorganiza respetando las
+              reservas próximas. Los vehículos en lavado no cambian de lugar.
+            </p>
+            {error && (
+              <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-700">
+                {error}
+              </p>
+            )}
+            <div className="flex flex-wrap gap-3">
+              <button className="btn-primary" type="submit">
+                {guardando ? "Registrando…" : "Registrar demora"}
+              </button>
+              <button className="btn-ghost" type="button" onClick={onClose}>
+                Cancelar
+              </button>
+            </div>
+          </fieldset>
+        </form>
+      )}
     </dialog>
   );
 }

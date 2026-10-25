@@ -66,6 +66,9 @@ En modo real, además (HU-16 y HU-28):
   detrás de un espontáneo. Los vehículos en lavado no se reordenan.
 - "Demora" registra minutos de demora (y un motivo opcional) sobre un vehículo en espera o en lavado
   (`POST /ordenes/{id}/demoras`). Si la demora obliga a adelantar una reserva, la cola se reorganiza.
+  Cuando el fin estimado cambia, el diálogo informa el nuevo horario y permite abrir WhatsApp con
+  un mensaje preparado para que el operador lo revise y lo envíe manualmente; no se envía nada
+  automáticamente. El seguimiento del mismo servicio muestra el fin recalculado al actualizarse.
 - La columna "Estimado" muestra el inicio estimado de los que esperan y el fin estimado de los que
   están en lavado, con la demora acumulada (`GET /lavaderos/{id}/cola/tiempos`). Si esa consulta
   falla, la cola se muestra igual, sin estimaciones. Si el backend no pudo estimar un tiempo (sin
@@ -114,6 +117,8 @@ Si no hay datos para estimar, se muestra el lugar en la fila y se avisa que toda
 estimar cuánto falta, sin inventar un tiempo. Hasta que el vehículo se retira, la página vuelve a
 pedir el seguimiento cada 15 segundos con la pestaña visible y al volver a ella, así la posición,
 la espera y la etapa se actualizan solas.
+Para las órdenes activas también muestra el fin estimado actual, recalculado por el backend; si
+faltan datos para calcularlo, no inventa una hora.
 
 El link vence cuando el vehículo se retira o la atención se cancela (HT-07): el backend responde
 410 y la página dice "Este link ya no está disponible", sin datos del cliente, aunque estuviera
