@@ -11,6 +11,7 @@ import {
   falloSeguimiento,
   horariosSeguimiento,
   linkWhatsApp,
+  mensajeDemoraSeguimiento,
   mensajeSeguimiento,
   modoCalificacion,
   resumenEspera,
@@ -118,6 +119,7 @@ const espera = {
   posicion: 3,
   esperaEstimadaMin: 25,
   inicioEstimado: "2026-10-23T13:25:00Z",
+  finEstimado: "2026-10-23T14:25:00Z",
   puestosActivos: 2,
   sinEstimacion: null,
   calculadaEl: "2026-10-23T13:00:00Z",
@@ -205,6 +207,22 @@ test("WhatsApp se abre al teléfono del cliente, o sin destinatario si no se rec
   assert.ok(conTelefono.startsWith("https://wa.me/5493415551234?text="));
   assert.equal(decodeURIComponent(conTelefono.split("text=")[1]), mensajeSeguimiento(destinatario, url));
   assert.ok(linkWhatsApp({ ...destinatario, telefono: null }, url).startsWith("https://wa.me/?text="));
+});
+
+test("el aviso manual de demora indica el servicio, el nuevo horario y solo el link de esa orden", () => {
+  const finEstimado = "2026-10-24T16:30:00Z";
+  const mensaje = mensajeDemoraSeguimiento(destinatario, "Lavado completo", finEstimado, url);
+  assert.ok(mensaje.startsWith("Hola Martina, hubo una demora en el servicio Lavado completo"));
+  assert.ok(mensaje.includes("Gol Trend AE512KD"));
+  assert.ok(mensaje.includes(new Intl.DateTimeFormat("es-AR", {
+    dateStyle: "short",
+    timeStyle: "short",
+  }).format(new Date(finEstimado))));
+  assert.ok(mensaje.endsWith(url));
+  assert.equal(
+    decodeURIComponent(linkWhatsApp(destinatario, url, mensaje).split("text=")[1]),
+    mensaje,
+  );
 });
 
 // HT-07: por qué no se pudo mostrar el seguimiento.

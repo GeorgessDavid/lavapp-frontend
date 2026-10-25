@@ -186,6 +186,7 @@ export function SeguimientoCliente({ codigo }: { codigo: string }) {
   const horarios = horariosSeguimiento(s);
   const espera = s.estado === "EN_ESPERA" && s.espera ? s.espera : null;
   const resumen = espera ? resumenEspera(espera) : null;
+  const ordenActiva = s.estado === "EN_ESPERA" || s.estado === "EN_PROGRESO";
 
   return (
     <div className="min-h-screen bg-[#F4F7FC]">
@@ -217,6 +218,38 @@ export function SeguimientoCliente({ codigo }: { codigo: string }) {
               </div>
             ))}
           </dl>
+
+          {ordenActiva && s.estimacion && (
+            <section
+              aria-label="Horario estimado de finalización"
+              aria-live="polite"
+              className="mt-5 rounded-2xl bg-[#6C5CE7]/5 p-4"
+            >
+              <p className="text-[11px] uppercase tracking-wide text-slate-400">
+                Nuevo tiempo estimado
+              </p>
+              {s.estimacion.finEstimado ? (
+                <>
+                  <p className="mt-1 text-lg font-bold text-navy">
+                    Finalización: {time(s.estimacion.finEstimado)}
+                    <span className="ml-2 text-sm font-normal text-slate-500">
+                      {fecha(s.estimacion.finEstimado)}
+                    </span>
+                  </p>
+                  <p className="text-[11px] text-slate-500">
+                    Es una estimación y puede cambiar durante el servicio.
+                  </p>
+                </>
+              ) : (
+                <p className="mt-1 text-sm text-slate-600">
+                  Por ahora no podemos estimar el horario de finalización.
+                </p>
+              )}
+              <p className="mt-2 text-[11px] text-slate-400">
+                Actualizado {time(s.estimacion.calculadaEl)} · se actualiza solo
+              </p>
+            </section>
+          )}
 
           {espera && resumen && (
             <section

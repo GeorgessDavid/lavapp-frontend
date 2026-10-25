@@ -27,14 +27,17 @@ const sinShare = () => false;
 export function LinkSeguimiento({
   ordenId,
   destinatario,
+  mensaje,
 }: {
   ordenId: number;
   destinatario: DestinatarioSeguimiento;
+  mensaje?: (url: string) => string;
 }) {
   const [link, setLink] = useState<EstadoLink>({ tipo: "cargando" });
   const [copia, setCopia] = useState<"copiado" | "error" | null>(null);
   const puedeCompartir = useSyncExternalStore(sinSuscripcion, hayShare, sinShare);
   const tituloId = useId();
+  const textoWhatsApp = (url: string) => mensaje?.(url) ?? mensajeSeguimiento(destinatario, url);
 
   useEffect(() => {
     let vigente = true;
@@ -66,7 +69,7 @@ export function LinkSeguimiento({
     try {
       await navigator.share({
         title: "Seguimiento de tu vehículo",
-        text: mensajeSeguimiento(destinatario, url),
+        text: textoWhatsApp(url),
       });
     } catch {
       // El coordinador cerró el menú sin elegir nada: no hay nada que avisar.
@@ -103,12 +106,12 @@ export function LinkSeguimiento({
             </button>
             <a
               className="btn-ghost"
-              href={linkWhatsApp(destinatario, link.url)}
+              href={linkWhatsApp(destinatario, link.url, textoWhatsApp(link.url))}
               target="_blank"
               rel="noopener noreferrer"
             >
               <MessageCircle className="h-4 w-4" aria-hidden="true" />
-              Enviar por WhatsApp
+              Abrir WhatsApp
             </a>
             {puedeCompartir && (
               <button type="button" className="btn-ghost" onClick={() => void compartir(link.url)}>
@@ -117,6 +120,9 @@ export function LinkSeguimiento({
               </button>
             )}
           </div>
+          <p className="mt-2 text-xs text-slate-500">
+            WhatsApp se abre con el mensaje listo para revisar y enviar manualmente.
+          </p>
           {copia === "copiado" && (
             <p className="mt-1 text-xs">Link copiado. Ya se lo podés mandar al cliente.</p>
           )}

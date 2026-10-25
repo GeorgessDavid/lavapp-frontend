@@ -106,10 +106,29 @@ export function mensajeSeguimiento(destinatario: DestinatarioSeguimiento, url: s
 }
 
 /** El link para abrir WhatsApp con el mensaje listo, al teléfono del cliente si se reconoce. */
-export function linkWhatsApp(destinatario: DestinatarioSeguimiento, url: string) {
+export function linkWhatsApp(destinatario: DestinatarioSeguimiento, url: string, texto?: string) {
   const telefono = telefonoWhatsApp(destinatario.telefono);
-  const texto = encodeURIComponent(mensajeSeguimiento(destinatario, url));
-  return `https://wa.me/${telefono ?? ""}?text=${texto}`;
+  const mensaje = encodeURIComponent(texto ?? mensajeSeguimiento(destinatario, url));
+  return `https://wa.me/${telefono ?? ""}?text=${mensaje}`;
+}
+
+/** Mensaje manual para un nuevo horario estimado, sin incluir datos de otra orden. */
+export function mensajeDemoraSeguimiento(
+  destinatario: DestinatarioSeguimiento,
+  servicio: string,
+  finEstimado: string,
+  url: string,
+) {
+  const nombre = destinatario.nombre.trim().split(/\s+/)[0];
+  const vehiculo = [destinatario.modelo?.trim(), destinatario.patente].filter(Boolean).join(" ");
+  const saludo = nombre ? `Hola ${nombre}` : "Hola";
+  const horario = new Intl.DateTimeFormat("es-AR", {
+    dateStyle: "short",
+    timeStyle: "short",
+  }).format(new Date(finEstimado));
+  return `${saludo}, hubo una demora en el servicio ${servicio} para tu ${vehiculo}. ` +
+    `El nuevo horario estimado de finalización es ${horario}. ` +
+    `Podés consultar el seguimiento de este servicio acá: ${url}`;
 }
 
 /**
