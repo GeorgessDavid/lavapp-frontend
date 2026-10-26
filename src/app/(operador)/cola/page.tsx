@@ -15,6 +15,7 @@ import {
 import { Card, KpiCard } from "@/components/ui/Card";
 import { Plate, StageBadge } from "@/components/ui/badges";
 import { LinkSeguimiento } from "@/components/seguimiento/LinkSeguimiento";
+import { AvisoListo } from "@/components/seguimiento/AvisoListo";
 import { useApp } from "@/lib/store";
 import { useLookups } from "@/lib/lookups";
 import { time, timeWithSeconds } from "@/lib/format";
@@ -461,7 +462,7 @@ export default function ColaPage() {
           </button>
         )}
         {orden?.estado === "LISTO" && (
-          <span className="text-xs text-slate-400">Esperando retiro</span>
+          <AvisoListo key={orden.ordenId} ordenId={orden.ordenId} />
         )}
       </>
     );

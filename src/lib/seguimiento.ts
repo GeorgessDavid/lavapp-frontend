@@ -112,6 +112,11 @@ export function linkWhatsApp(destinatario: DestinatarioSeguimiento, url: string,
   return `https://wa.me/${telefono ?? ""}?text=${mensaje}`;
 }
 
+/** HU-36: mensaje de retiro para el vehículo y servicio de la misma orden finalizada. */
+export function mensajeListoSeguimiento(destinatario: DestinatarioSeguimiento, servicio: string, url: string) {
+  return `Hola ${destinatario.nombre}, tu vehículo ${destinatario.patente} está listo para retirar. Servicio: ${servicio}. Seguimiento: ${url}`;
+}
+
 /** Mensaje manual para un nuevo horario estimado, sin incluir datos de otra orden. */
 export function mensajeDemoraSeguimiento(
   destinatario: DestinatarioSeguimiento,

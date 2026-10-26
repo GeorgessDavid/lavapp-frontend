@@ -13,6 +13,7 @@ import {
   linkWhatsApp,
   mensajeDemoraSeguimiento,
   mensajeSeguimiento,
+  mensajeListoSeguimiento,
   modoCalificacion,
   resumenEspera,
   seActualizaSolo,
@@ -207,6 +208,15 @@ test("WhatsApp se abre al teléfono del cliente, o sin destinatario si no se rec
   assert.ok(conTelefono.startsWith("https://wa.me/5493415551234?text="));
   assert.equal(decodeURIComponent(conTelefono.split("text=")[1]), mensajeSeguimiento(destinatario, url));
   assert.ok(linkWhatsApp({ ...destinatario, telefono: null }, url).startsWith("https://wa.me/?text="));
+});
+
+test("el aviso de listo incluye cliente, patente, servicio y enlace de la orden", () => {
+  const mensaje = mensajeListoSeguimiento(destinatario, "Lavado completo", url);
+  assert.ok(mensaje.includes(destinatario.nombre));
+  assert.ok(mensaje.includes(`${destinatario.patente} está listo para retirar`));
+  assert.ok(mensaje.includes("Servicio: Lavado completo"));
+  assert.ok(mensaje.endsWith(url));
+  assert.equal(decodeURIComponent(linkWhatsApp(destinatario, url, mensaje).split("text=")[1]), mensaje);
 });
 
 test("el aviso manual de demora indica el servicio, el nuevo horario y solo el link de esa orden", () => {

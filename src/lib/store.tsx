@@ -261,7 +261,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           if (!next) return a;
           if (next === "LISTO") {
             setToast(
-              `WhatsApp enviado: el vehículo está listo para retirar. /seguimiento/${a.tokenSeguimiento}`,
+              `Vehículo listo para retirar. Aviso manual pendiente. /seguimiento/${a.tokenSeguimiento}`,
             );
           }
           return { ...a, estado: next, demoraMin: next === "LISTO" ? 0 : a.demoraMin };
@@ -361,7 +361,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         ),
       );
       setToast(
-        `Servicio finalizado. WhatsApp enviado: el vehículo está listo para retirar. /seguimiento/${atencion.tokenSeguimiento}`,
+        `Servicio finalizado. Aviso manual pendiente: el vehículo está listo para retirar. /seguimiento/${atencion.tokenSeguimiento}`,
       );
     };
 
@@ -374,7 +374,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         },
         ...prev,
       ]);
-      setToast("Reserva confirmada. Se enviará el recordatorio por WhatsApp.");
+      setToast("Reserva confirmada. El recordatorio por WhatsApp requiere envío manual.");
     };
 
     return {
