@@ -312,6 +312,10 @@ export function retirarOrdenApi(ordenId: number): Promise<OrdenTrabajoApi> {
   return request<OrdenTrabajoApi>(`/ordenes/${ordenId}/retirar`, { method: "PATCH" });
 }
 
+export function iniciarLavadoApi(ordenId: number): Promise<OrdenTrabajoApi> {
+  return request<OrdenTrabajoApi>(`/ordenes/${ordenId}/iniciar-lavado`, { method: "PATCH" });
+}
+
 export async function patchEstado(
   id: string,
   estado: Atencion["estado"],
