@@ -308,6 +308,10 @@ export async function finalizarServicioApi(
   });
 }
 
+export function retirarOrdenApi(ordenId: number): Promise<OrdenTrabajoApi> {
+  return request<OrdenTrabajoApi>(`/ordenes/${ordenId}/retirar`, { method: "PATCH" });
+}
+
 export async function patchEstado(
   id: string,
   estado: Atencion["estado"],

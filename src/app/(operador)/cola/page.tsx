@@ -20,7 +20,7 @@ import { useApp } from "@/lib/store";
 import { useLookups } from "@/lib/lookups";
 import { time, timeWithSeconds } from "@/lib/format";
 import { tienePuestoAsignado } from "@/lib/box-assignment";
-import { ApiError, apiConfig, fetchOrdenes, finalizarServicioApi } from "@/lib/api";
+import { ApiError, apiConfig, fetchOrdenes, finalizarServicioApi, retirarOrdenApi } from "@/lib/api";
 import {
   fetchTiemposCola,
   moverEnCola,
@@ -80,6 +80,7 @@ export default function ColaPage() {
   const [ordenesBackend, setOrdenesBackend] = useState<OrdenesBackend | null>(null);
   const [actualizadoEl, setActualizadoEl] = useState<string | null>(null);
   const [finalizando, setFinalizando] = useState<string | null>(null);
+  const [retirando, setRetirando] = useState<string | null>(null);
   const [errorBackend, setErrorBackend] = useState("");
   const [cargandoBackend, setCargandoBackend] = useState(false);
   // HU-28: tiempos estimados por orden. Si esa consulta falla, la cola se muestra igual sin ellos.
@@ -185,6 +186,25 @@ export default function ColaPage() {
       );
     } finally {
       setFinalizando(null);
+      void cargarColaBackend();
+    }
+  };
+
+  const registrarRetiro = async (fila: FilaCola) => {
+    if (fila.tipo === "local") {
+      retirar(fila.atencion.id);
+      return;
+    }
+    setRetirando(idDeFila(fila));
+    try {
+      await retirarOrdenApi(fila.orden.ordenId);
+      notificar(`Retiro registrado: ${fila.orden.patente}. Se liberó su lugar en el playón.`);
+    } catch (error) {
+      notificar(error instanceof ApiError && error.status === 409
+        ? "No se pudo registrar el retiro: el vehículo ya no está listo para retirar."
+        : error instanceof Error ? error.message : "No se pudo registrar el retiro.");
+    } finally {
+      setRetirando(null);
       void cargarColaBackend();
     }
   };
@@ -446,19 +466,19 @@ export default function ColaPage() {
             {finalizando === rowId ? "Finalizando..." : "Finalizar servicio"}
           </button>
         )}
-        {a && a.estado !== "RETIRADO" && (
+        {((a && a.estado !== "RETIRADO") || orden?.estado === "LISTO") && (
           <button
             type="button"
             className="text-xs font-semibold text-emerald-600 disabled:cursor-not-allowed disabled:text-slate-400"
-            disabled={a.estado !== "LISTO"}
+            disabled={estado !== "LISTO" || retirando === rowId}
             title={
-              a.estado === "LISTO"
+              estado === "LISTO"
                 ? "Registrar el retiro del vehículo finalizado"
                 : "El retiro se habilita cuando el vehículo está finalizado"
             }
-            onClick={() => retirar(a.id)}
+            onClick={() => void registrarRetiro(fila)}
           >
-            Registrar retiro
+            {retirando === rowId ? "Registrando retiro…" : "Registrar retiro"}
           </button>
         )}
         {orden?.estado === "LISTO" && (
