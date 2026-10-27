@@ -6,6 +6,7 @@ import type {
   OrdenTrabajoApi,
   PlanActual,
   Role,
+  RolSistema,
   User,
 } from "./types";
 import { NEXT_STAGE, users, atenciones as seedAtenciones } from "./mock-data";
@@ -197,21 +198,20 @@ export function crearReservaApi(
 // Autenticación (backend: POST /auth/authenticate, GET /auth/me, POST /auth/logout)
 // ----------------------------------------------------------------------------
 
-type RolApi = "ADMIN_LAVAPP" | "DUENO_LAVADERO" | "ENCARGADO" | "EMPLEADO";
-
 /** Usuario tal como lo devuelve el backend en /auth/authenticate y /auth/me. */
 export interface UsuarioApi {
   id: number;
   email: string;
-  rol: RolApi;
+  rol: RolSistema;
   lavaderoId: number | null;
 }
 
 /**
  * Los roles del backend se proyectan sobre los del front: dueño y admin de LavApp ven la
  * app completa; encargados y empleados operan. FLOTA no existe en el backend (solo demo).
+ * El rol original se conserva en `rolSistema`, que es el que decide los permisos.
  */
-const ROL_API_A_ROLE: Record<RolApi, Role> = {
+const ROL_API_A_ROLE: Record<RolSistema, Role> = {
   ADMIN_LAVAPP: "DUENO",
   DUENO_LAVADERO: "DUENO",
   ENCARGADO: "OPERADOR",
@@ -235,9 +235,17 @@ export function toUser(usuario: UsuarioApi): User {
     nombre: nombreDesdeEmail(usuario.email),
     email: usuario.email,
     rol: ROL_API_A_ROLE[usuario.rol] ?? "OPERADOR",
+    rolSistema: usuario.rol,
     lavaderoId: usuario.lavaderoId ?? undefined,
   };
 }
+
+/** En modo demo no hay backend: el operador de prueba actúa como encargado. */
+const ROL_DEMO_A_SISTEMA: Record<Role, RolSistema | undefined> = {
+  DUENO: "DUENO_LAVADERO",
+  OPERADOR: "ENCARGADO",
+  FLOTA: undefined,
+};
 
 export async function loginRequest(
   email: string,
@@ -253,6 +261,7 @@ export async function loginRequest(
       nombre: found.nombre,
       email: found.email,
       rol: found.rol,
+      rolSistema: ROL_DEMO_A_SISTEMA[found.rol],
       lavaderoId: found.lavaderoId,
     };
   }
@@ -419,11 +428,6 @@ export async function simulatePlanChange(
 
 export function nextStageOf(estado: Atencion["estado"]) {
   return NEXT_STAGE[estado];
-}
-
-export function homeForRole(rol: Role) {
-  if (rol === "FLOTA") return "/flotas";
-  return "/dashboard";
 }
 
 export const apiConfig = { API_URL, USE_MOCK };

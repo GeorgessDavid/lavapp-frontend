@@ -23,17 +23,19 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { Logo } from "@/components/brand/Logo";
+import { useAccesoProtegido } from "@/components/layout/useAccesoProtegido";
 import { useApp } from "@/lib/store";
 import { fetchPlanActual } from "@/lib/api";
-import type { PlanActual, PlanFeature } from "@/lib/types";
+import { puedeAbrirRuta } from "@/lib/permisos";
+import type { PlanActual, PlanFeature, User } from "@/lib/types";
 import { clock, todayLabel } from "@/lib/format";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 
+// Qué roles ven cada sección lo decide lib/permisos.ts (las mismas reglas que protegen la ruta).
 const nav: {
   href: string;
   label: string;
   icon: LucideIcon;
-  owner?: boolean;
   feature?: PlanFeature;
 }[] = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, feature: "CAPACIDAD" },
@@ -45,15 +47,24 @@ const nav: {
   { href: "/historial", label: "Historial", icon: History, feature: "HISTORIAL_BASICO" },
   { href: "/vehiculos", label: "Vehículos", icon: Users },
   { href: "/fidelizacion", label: "Fidelización", icon: Gift },
-  { href: "/servicios", label: "Servicios", icon: Timer, owner: true },
-  { href: "/reportes", label: "Reportes", icon: BarChart3, owner: true },
-  { href: "/plan", label: "Mi Plan", icon: BadgeDollarSign, owner: true },
+  { href: "/servicios", label: "Servicios", icon: Timer },
+  { href: "/reportes", label: "Reportes", icon: BarChart3 },
+  { href: "/plan", label: "Mi Plan", icon: BadgeDollarSign },
 ];
+
+const ETIQUETA_ROL: Record<NonNullable<User["rolSistema"]>, string> = {
+  ADMIN_LAVAPP: "Administrador",
+  DUENO_LAVADERO: "Dueño",
+  ENCARGADO: "Encargado",
+  EMPLEADO: "Empleado",
+};
 
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { user, logout, toast, clearToast, atenciones } = useApp();
+  const { sesion, logout, toast, clearToast, atenciones } = useApp();
+  // Solo hay usuario cuando la sesión está confirmada y puede ver esta ruta; si no, se redirige.
+  const user = useAccesoProtegido("operador");
   const [now, setNow] = useState(clock());
   const [plan, setPlan] = useState<PlanActual | null>(null);
   const [planError, setPlanError] = useState("");
@@ -62,13 +73,8 @@ export function AppShell({ children }: { children: ReactNode }) {
   const [menuAbierto, setMenuAbierto] = useState(false);
 
   useEffect(() => {
-    if (!user) router.replace("/login");
-    else if (user.rol === "FLOTA") router.replace("/flotas");
-  }, [user, router]);
-
-  useEffect(() => {
     let cancelled = false;
-    if (!user || user.rol === "FLOTA") return;
+    if (!user) return;
     if (user.lavaderoId === undefined) return;
     const lavaderoId = user.lavaderoId;
     const cargarPlan = () => fetchPlanActual(lavaderoId)
@@ -111,9 +117,15 @@ export function AppShell({ children }: { children: ReactNode }) {
     [atenciones],
   );
 
-  if (!user || user.rol === "FLOTA") return null;
+  if (!user) {
+    return sesion === "verificando" ? (
+      <p role="status" className="grid min-h-screen place-items-center bg-surface text-sm text-slate-400">
+        Verificando la sesión…
+      </p>
+    ) : null;
+  }
 
-  const items = nav.filter((item) => !item.owner || user.rol === "DUENO");
+  const items = nav.filter((item) => puedeAbrirRuta(user, item.href));
   const planForUser =
     plan?.lavaderoId === user.lavaderoId ? plan : null;
   const visiblePlanError =
@@ -241,7 +253,9 @@ export function AppShell({ children }: { children: ReactNode }) {
               <div className="hidden leading-tight sm:block">
                 <p className="text-xs font-semibold text-navy">{user.nombre}</p>
                 <p className="text-[10px] text-slate-400">
-                  {user.rol === "DUENO" ? "Dueño" : "Operador"}
+                  {user.rolSistema
+                    ? ETIQUETA_ROL[user.rolSistema]
+                    : user.rol === "DUENO" ? "Dueño" : "Operador"}
                 </p>
               </div>
             </div>

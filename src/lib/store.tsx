@@ -44,8 +44,18 @@ import { estaEnLavado } from "./etapas";
 
 const STORAGE_KEY = "lavapp_session";
 
+/**
+ * "verificando": hay un usuario guardado en el navegador pero el backend todavía no confirmó la
+ * sesión, así que no se muestran pantallas protegidas. "lista": lo que dice `user` ya es confiable
+ * (en modo demo, enseguida).
+ */
+export type EstadoSesion = "verificando" | "lista";
+
 interface AppState {
   user: User | null;
+  sesion: EstadoSesion;
+  /** El backend cerró la sesión (401) mientras se usaba la app: el login avisa que venció. */
+  sesionVencida: boolean;
   clientes: Cliente[];
   vehiculos: Vehiculo[];
   servicios: Servicio[];
@@ -89,7 +99,10 @@ function loadUser(): User | null {
   const raw = localStorage.getItem(STORAGE_KEY);
   if (!raw) return null;
   try {
-    return JSON.parse(raw) as User;
+    const user = JSON.parse(raw) as User;
+    // Guardado por una versión anterior, sin el rol del backend: se pide iniciar sesión de nuevo.
+    if (!user.rolSistema && user.rol !== "FLOTA") return null;
+    return user;
   } catch {
     return null;
   }
@@ -104,17 +117,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [reservas, setReservas] = useState(seedReservas);
   const [toast, setToast] = useState<string | null>(null);
   const [hydrated, setHydrated] = useState(false);
+  const [sesion, setSesion] = useState<EstadoSesion>("verificando");
+  const [sesionVencida, setSesionVencida] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     const timeout = window.setTimeout(() => {
       // Resto de la versión con token: ya no se usa.
       localStorage.removeItem("lavapp_token");
-      // Se muestra enseguida el usuario cacheado para no parpadear al login...
-      setUser(loadUser());
+      // El usuario guardado solo dice quién estaba logueado: cualquiera puede editarlo desde el
+      // navegador. En modo demo es la única fuente; con backend, se confirma antes de usarlo.
+      const guardado = loadUser();
+      setUser(guardado);
       setHydrated(true);
-      if (apiConfig.USE_MOCK) return;
-      // ...y se confirma la sesión con el backend (cookie LAVAPP_SESSION).
+      if (apiConfig.USE_MOCK || !guardado) {
+        setSesion("lista");
+        return;
+      }
       fetchMe()
         .then((actual) => {
           if (cancelled) return;
@@ -127,7 +146,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
           }
         })
         .catch(() => {
-          // Backend caído o sin red: se conserva el cache; las pantallas mostrarán sus errores.
+          // Backend caído o sin red: se conserva el usuario guardado para que las pantallas
+          // muestren sus errores. No expone nada: cada pedido al backend vuelve a exigir la sesión.
+        })
+        .finally(() => {
+          if (!cancelled) setSesion("lista");
         });
     }, 0);
     return () => {
@@ -140,7 +163,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     // Cualquier 401 fuera del login (sesión expirada, usuario desactivado) cierra la sesión local.
     setOnUnauthorized(() => {
       localStorage.removeItem(STORAGE_KEY);
-      setUser(null);
+      setUser((actual) => {
+        if (actual) setSesionVencida(true);
+        return null;
+      });
     });
     return () => setOnUnauthorized(null);
   }, []);
@@ -150,6 +176,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const usuario = await loginRequest(email, password);
       localStorage.setItem(STORAGE_KEY, JSON.stringify(usuario));
       setUser(usuario);
+      setSesion("lista");
+      setSesionVencida(false);
       return usuario;
     };
 
@@ -157,6 +185,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       // Primero se cierra la sesión local (la UI redirige al login) y después la del backend.
       localStorage.removeItem(STORAGE_KEY);
       setUser(null);
+      setSesionVencida(false);
       try {
         await logoutRequest();
       } catch {
@@ -379,6 +408,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     return {
       user,
+      sesion,
+      sesionVencida,
       clientes,
       vehiculos,
       servicios: seedServicios,
@@ -401,7 +432,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       notificar: setToast,
       clearToast: () => setToast(null),
     };
-  }, [user, clientes, vehiculos, boxes, atenciones, reservas, toast]);
+  }, [user, sesion, sesionVencida, clientes, vehiculos, boxes, atenciones, reservas, toast]);
 
   if (!hydrated) return <div className="min-h-screen bg-[#F4F7FC]" />;
 
