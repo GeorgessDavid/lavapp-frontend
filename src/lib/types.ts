@@ -25,11 +25,17 @@ export type NotificationType =
   | "LISTO"
   | "PROMOCION";
 
+/** Rol tal como lo define el backend. Decide los permisos (ver lib/permisos.ts). */
+export type RolSistema = "ADMIN_LAVAPP" | "DUENO_LAVADERO" | "ENCARGADO" | "EMPLEADO";
+
 export interface User {
   id: string;
   nombre: string;
   email: string;
+  /** Perfil de la interfaz: qué app ve (operador, dueño o flota). */
   rol: Role;
+  /** Rol del backend. Encargado y empleado comparten la vista de operador pero no los permisos. */
+  rolSistema?: RolSistema;
   lavaderoId?: number;
 }
 

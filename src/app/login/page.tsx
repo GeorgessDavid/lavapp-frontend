@@ -1,10 +1,21 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Logo } from "@/components/brand/Logo";
 import { useApp } from "@/lib/store";
-import { apiConfig, homeForRole } from "@/lib/api";
+import { apiConfig } from "@/lib/api";
+import { destinoTrasLogin } from "@/lib/permisos";
+import type { User } from "@/lib/types";
+
+/**
+ * La ruta que el usuario quería abrir antes de que lo trajeran al login (`?next=`). Se lee de la URL
+ * en el momento y no con useSearchParams, que obligaría a envolver la página en un Suspense.
+ * destinoTrasLogin la valida: solo rutas internas que el usuario puede abrir.
+ */
+function destinoDe(user: User) {
+  return destinoTrasLogin(user, new URLSearchParams(window.location.search).get("next"));
+}
 
 const demos = [
   { email: "operador@lavapp.com", password: "operador", rol: "Operador" },
@@ -14,7 +25,7 @@ const demos = [
 ];
 
 export default function LoginPage() {
-  const { login } = useApp();
+  const { login, user, sesion, sesionVencida } = useApp();
   const router = useRouter();
   const [email, setEmail] = useState(apiConfig.USE_MOCK ? demos[0].email : "");
   const [password, setPassword] = useState(
@@ -23,13 +34,18 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
+  // Con una sesión ya confirmada no tiene sentido volver a loguearse: se sigue de largo.
+  useEffect(() => {
+    if (sesion === "lista" && user && !loading) router.replace(destinoDe(user));
+  }, [sesion, user, loading, router]);
+
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     setError("");
     setLoading(true);
     try {
-      const user = await login(email, password);
-      router.push(homeForRole(user.rol));
+      const usuario = await login(email, password);
+      router.replace(destinoDe(usuario));
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo iniciar sesión");
     } finally {
@@ -90,8 +106,14 @@ export default function LoginPage() {
             required
           />
 
+          {sesionVencida && !error && (
+            <p role="status" className="mt-3 rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-800">
+              Tu sesión venció. Ingresá nuevamente para continuar.
+            </p>
+          )}
+
           {error && (
-            <p className="mt-3 text-sm text-red-600">{error}</p>
+            <p role="alert" className="mt-3 text-sm text-red-600">{error}</p>
           )}
 
           <button className="btn-primary mt-6 w-full" disabled={loading}>
