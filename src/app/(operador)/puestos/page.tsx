@@ -5,6 +5,7 @@ import { useApp } from "@/lib/store";
 import {
   ApiError,
   asignarPuestoApi,
+  iniciarLavadoApi,
   listarOrdenesParaPuestos,
   listarPuestosReserva,
   type OrdenParaPuesto,
@@ -127,6 +128,31 @@ function PanelPuestos({ lavaderoId }: { lavaderoId: number }) {
     }
   }
 
+  async function iniciar(orden: OrdenParaPuesto) {
+    if (ocupado.current || cargando || !datos || orden.estado !== "EN_ESPERA" || orden.puestoId === null) return;
+    ocupado.current = true;
+    setGuardando(true);
+    setError("");
+    setMensaje("");
+    try {
+      await iniciarLavadoApi(orden.ordenId);
+      setMensaje(`Lavado iniciado para ${orden.patente}.`);
+    } catch (err) {
+      setError(err instanceof ApiError && err.status === 409
+        ? "No se pudo iniciar: la orden ya no está en espera."
+        : err instanceof ApiError ? err.message : "No se pudo iniciar el lavado.");
+    }
+    try {
+      setDatos(await consultar(lavaderoId));
+    } catch {
+      setDatos(null);
+      setError((anterior) => `${anterior ? `${anterior} ` : ""}No se pudo actualizar la pantalla. Pulsá Actualizar.`);
+    } finally {
+      ocupado.current = false;
+      setGuardando(false);
+    }
+  }
+
   const pendientes =
     datos?.ordenes.filter(
       (orden) => orden.estado === "EN_ESPERA" && orden.puestoId === null,
@@ -230,6 +256,12 @@ function PanelPuestos({ lavaderoId }: { lavaderoId: number }) {
                             ? "En proceso"
                             : "Listo para retirar"}
                       </p>
+                      {orden.estado === "EN_ESPERA" && (
+                        <button type="button" className="btn-primary w-full"
+                          disabled={guardando || cargando} onClick={() => void iniciar(orden)}>
+                          {guardando ? "Procesando…" : "Iniciar lavado"}
+                        </button>
+                      )}
                     </div>
                   ) : (
                     <button

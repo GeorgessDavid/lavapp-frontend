@@ -12,6 +12,7 @@ import {
   UserPlus,
 } from "lucide-react";
 import { Card, KpiCard } from "@/components/ui/Card";
+import { useApp } from "@/lib/store";
 import { ReservaGestion, reservaEditable, type ReservaAccion } from "@/components/ReservaGestion";
 import { Plate, ReservaBadge } from "@/components/ui/badges";
 import {
@@ -31,7 +32,6 @@ import {
   type ReservaVehiculo,
 } from "@/lib/api";
 
-const LAVADERO_ID = Number(process.env.NEXT_PUBLIC_LAVADERO_ID ?? "1");
 const DEFAULT_RESERVATION_DATE = new Date(Date.now() + 86_400_000);
 
 function inputDate(date: Date) {
@@ -60,6 +60,12 @@ function errorMessage(error: unknown) {
 }
 
 export default function ReservasPage() {
+  const { user } = useApp();
+  const lavaderoId = user?.lavaderoId ?? Number(process.env.NEXT_PUBLIC_LAVADERO_ID ?? "1");
+  return <AgendaReservas key={lavaderoId} lavaderoId={lavaderoId} />;
+}
+
+function AgendaReservas({ lavaderoId }: { lavaderoId: number }) {
   const [clientes, setClientes] = useState<ReservaCliente[]>([]);
   const [vehiculos, setVehiculos] = useState<ReservaVehiculo[]>([]);
   const [servicios, setServicios] = useState<ReservaServicio[]>([]);
@@ -95,10 +101,10 @@ export default function ReservasPage() {
     try {
       const [nextClientes, nextServicios, nextPuestos, nextReservas] =
         await Promise.all([
-          listarClientesReserva(LAVADERO_ID),
-          listarServiciosReserva(LAVADERO_ID),
-          listarPuestosReserva(LAVADERO_ID),
-          listarReservas(LAVADERO_ID, false),
+          listarClientesReserva(lavaderoId),
+          listarServiciosReserva(lavaderoId),
+          listarPuestosReserva(lavaderoId),
+          listarReservas(lavaderoId, false),
         ]);
       setClientes(nextClientes);
       setServicios(nextServicios);
@@ -112,7 +118,7 @@ export default function ReservasPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [lavaderoId]);
 
   useEffect(() => {
     const timeout = window.setTimeout(() => void loadPage(), 0);
@@ -127,7 +133,7 @@ export default function ReservasPage() {
       pending = true;
       const currentRevision = revision.current;
       try {
-        const items = await listarReservas(LAVADERO_ID, false);
+        const items = await listarReservas(lavaderoId, false);
         if (active && currentRevision === revision.current) setReservas(items);
       } catch { /* El botón Actualizar permite reintentar y consultar errores sin interrumpir una edición. */ }
       finally { pending = false; }
@@ -135,12 +141,12 @@ export default function ReservasPage() {
     const interval = window.setInterval(() => void refresh(), 15_000);
     window.addEventListener("focus", refresh);
     return () => { active = false; window.clearInterval(interval); window.removeEventListener("focus", refresh); };
-  }, []);
+  }, [lavaderoId]);
 
   useEffect(() => {
     if (!clienteId || nuevoCliente) return;
     let active = true;
-    listarVehiculosReserva(LAVADERO_ID, Number(clienteId))
+    listarVehiculosReserva(lavaderoId, Number(clienteId))
       .then((items) => {
         if (!active) return;
         setVehiculos(items);
@@ -151,7 +157,7 @@ export default function ReservasPage() {
     return () => {
       active = false;
     };
-  }, [clienteId, nuevoCliente]);
+  }, [clienteId, nuevoCliente, lavaderoId]);
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -162,7 +168,7 @@ export default function ReservasPage() {
     try {
       let resolvedClienteId = Number(clienteId);
       if (nuevoCliente) {
-        const created = await crearClienteReserva(LAVADERO_ID, {
+        const created = await crearClienteReserva(lavaderoId, {
           nombre: clienteNombre.trim(),
           telefono: clienteTelefono.trim(),
         });
@@ -177,7 +183,7 @@ export default function ReservasPage() {
       let resolvedVehiculoId = Number(vehiculoId);
       if (nuevoCliente || nuevoVehiculo) {
         const created = await crearVehiculoReserva(
-          LAVADERO_ID,
+          lavaderoId,
           resolvedClienteId,
           { patente: patente.trim(), marca: marca.trim(), modelo: modelo.trim() },
         );
@@ -191,7 +197,7 @@ export default function ReservasPage() {
       }
 
       const fechaHorario = new Date(`${fecha}T${horario}:00`).toISOString();
-      const created = await crearReservaApi(LAVADERO_ID, {
+      const created = await crearReservaApi(lavaderoId, {
         clienteId: resolvedClienteId,
         vehiculoId: resolvedVehiculoId,
         servicioId: Number(servicioId),
@@ -208,7 +214,7 @@ export default function ReservasPage() {
       setSuccess(`Reserva #${created.id} registrada correctamente.`);
       setClienteId(String(resolvedClienteId));
       const refreshedVehicles = await listarVehiculosReserva(
-        LAVADERO_ID,
+        lavaderoId,
         resolvedClienteId,
       );
       setVehiculos(refreshedVehicles);
@@ -421,7 +427,7 @@ export default function ReservasPage() {
           </form>
         </Card>
       </div>
-      {seleccionada && <ReservaGestion key={`${seleccionada.reserva.id}-${seleccionada.accion}`} reserva={seleccionada.reserva} accion={seleccionada.accion} lavaderoId={LAVADERO_ID} servicios={servicios} onClose={() => setSeleccionada(null)} onSaved={(updated) => {
+      {seleccionada && <ReservaGestion key={`${seleccionada.reserva.id}-${seleccionada.accion}`} reserva={seleccionada.reserva} accion={seleccionada.accion} lavaderoId={lavaderoId} servicios={servicios} onClose={() => setSeleccionada(null)} onSaved={(updated) => {
         revision.current++;
         setReservas((current) => current.map((r) => r.id === updated.id ? updated : r));
         setSuccess(updated.estado === "CANCELADA" ? `Reserva #${updated.id} cancelada. Se conserva en el historial.` : `Reserva #${updated.id} modificada correctamente.`);
