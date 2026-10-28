@@ -5,6 +5,7 @@ import {
   AlertTriangle,
   CalendarClock,
   Car,
+  CheckCircle2,
   ChevronDown,
   ChevronUp,
   Clock,
@@ -14,7 +15,9 @@ import {
 } from "lucide-react";
 import { Card, KpiCard } from "@/components/ui/Card";
 import { Plate, StageBadge } from "@/components/ui/badges";
+import { AvisoListoDialog } from "@/components/seguimiento/AvisoListoDialog";
 import { LinkSeguimiento } from "@/components/seguimiento/LinkSeguimiento";
+import { consultarAvisoListo, type AvisoListoApi } from "@/lib/api-aviso";
 import { useApp } from "@/lib/store";
 import { useLookups } from "@/lib/lookups";
 import { time, timeWithSeconds } from "@/lib/format";
@@ -93,6 +96,9 @@ export default function ColaPage() {
   } | null>(null);
   // HU-53: el link de seguimiento de cualquier atención activa, espontánea o con reserva.
   const [linkPara, setLinkPara] = useState<LinkParaOrden | null>(null);
+  // HU-36: el aviso manual de una orden LISTO y el estado ya confirmado de cada una.
+  const [avisoPara, setAvisoPara] = useState<number | null>(null);
+  const [avisosListos, setAvisosListos] = useState<Map<number, AvisoListoApi>>(() => new Map());
   const lavaderoId = user?.lavaderoId;
   const libres = boxes.filter((b) => b.estado === "DISPONIBLE");
   const activas = atenciones.filter((a) => a.estado !== "RETIRADO");
@@ -123,7 +129,15 @@ export default function ColaPage() {
         fetchOrdenes(lavaderoId, "LISTO"),
         fetchTiemposCola(lavaderoId).catch(() => null),
       ]);
+      const avisos = new Map<number, AvisoListoApi>();
+      await Promise.all(
+        listas.map(async (orden) => {
+          const aviso = await consultarAvisoListo(orden.ordenId).catch(() => null);
+          if (aviso) avisos.set(orden.ordenId, aviso);
+        }),
+      );
       setOrdenesBackend({ enEspera, enLavado, listas });
+      setAvisosListos(avisos);
       setTiempos(indexarTiempos(tiemposApi ?? []));
       setActualizadoEl(new Date().toISOString());
       setErrorBackend("");
@@ -328,6 +342,7 @@ export default function ColaPage() {
   const acciones = (fila: FilaCola) => {
     const a = fila.tipo === "local" ? fila.atencion : null;
     const orden = fila.tipo === "backend" ? fila.orden : null;
+    const aviso = orden ? avisosListos.get(orden.ordenId) : undefined;
     const rowId = idDeFila(fila);
     const { estado } = fila;
     return (
@@ -460,6 +475,22 @@ export default function ColaPage() {
             Registrar retiro
           </button>
         )}
+        {orden?.estado === "LISTO" &&
+          (aviso?.confirmadoEl ? (
+            <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-600">
+              <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />
+              Aviso enviado
+            </span>
+          ) : (
+            <button
+              type="button"
+              className="text-xs font-semibold text-[#6C5CE7]"
+              title="Preparar el mensaje manual de WhatsApp para avisar que el vehículo está listo"
+              onClick={() => setAvisoPara(orden.ordenId)}
+            >
+              Notificar por WhatsApp
+            </button>
+          ))}
         {orden?.estado === "LISTO" && (
           <span className="text-xs text-slate-400">Esperando retiro</span>
         )}
@@ -701,6 +732,21 @@ export default function ColaPage() {
         />
       )}
       {linkPara && <LinkDialog {...linkPara} onClose={() => setLinkPara(null)} />}
+      {avisoPara !== null && (
+        <AvisoListoDialog
+          key={avisoPara}
+          ordenId={avisoPara}
+          onClose={() => setAvisoPara(null)}
+          onConfirmado={(aviso) => {
+            setAvisosListos((actual) => {
+              const siguiente = new Map(actual);
+              siguiente.set(aviso.ordenId, aviso);
+              return siguiente;
+            });
+            notificar(`Aviso confirmado: ${aviso.patente} ya fue notificado al cliente.`);
+          }}
+        />
+      )}
     </div>
   );
 }

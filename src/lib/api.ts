@@ -296,6 +296,17 @@ export async function fetchOrdenes(
   );
 }
 
+/** Alta de un ingreso espontáneo. La orden siempre arranca EN_ESPERA. */
+export function crearOrdenApi(
+  lavaderoId: number,
+  payload: { clienteId: number; vehiculoId: number; servicioId: number },
+) {
+  return request<OrdenColaApi>(`/lavaderos/${lavaderoId}/ordenes`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
 /**
  * Finaliza el lavado de una orden (HU-34): EN_PROGRESO -> LISTO, con el momento en finLavado.
  * El backend responde 409 si la orden no está en lavado (por ejemplo, si ya fue finalizada).

@@ -11,6 +11,7 @@ import {
   falloSeguimiento,
   horariosSeguimiento,
   linkWhatsApp,
+  mensajeAvisoListo,
   mensajeDemoraSeguimiento,
   mensajeSeguimiento,
   modoCalificacion,
@@ -207,6 +208,26 @@ test("WhatsApp se abre al teléfono del cliente, o sin destinatario si no se rec
   assert.ok(conTelefono.startsWith("https://wa.me/5493415551234?text="));
   assert.equal(decodeURIComponent(conTelefono.split("text=")[1]), mensajeSeguimiento(destinatario, url));
   assert.ok(linkWhatsApp({ ...destinatario, telefono: null }, url).startsWith("https://wa.me/?text="));
+});
+
+test("el aviso de vehículo listo indica el servicio y el link de esa orden", () => {
+  const mensaje = mensajeAvisoListo(destinatario, "Lavado completo", url);
+  assert.equal(
+    mensaje,
+    `Hola Martina, tu Gol Trend AE512KD ya está listo para retirar. Servicio: Lavado completo. ` +
+      `Podés consultar el detalle acá: ${url}`,
+  );
+  assert.equal(
+    decodeURIComponent(linkWhatsApp(destinatario, url, mensaje).split("text=")[1]),
+    mensaje,
+  );
+});
+
+test("el aviso de listo no inventa un servicio si no vino", () => {
+  assert.equal(
+    mensajeAvisoListo({ nombre: "Ana", patente: "AB123CD" }, "", url),
+    `Hola Ana, tu AB123CD ya está listo para retirar. Podés consultar el detalle acá: ${url}`,
+  );
 });
 
 test("el aviso manual de demora indica el servicio, el nuevo horario y solo el link de esa orden", () => {

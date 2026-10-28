@@ -121,7 +121,7 @@ export default function DashboardPage() {
                             Avanzar
                           </button>
                         ) : (
-                          <span className="text-xs text-emerald-600">Aviso enviado</span>
+                          <span className="text-xs text-amber-600">Aviso manual pendiente</span>
                         )}
                       </td>
                     </tr>
