@@ -14,6 +14,7 @@ import {
   mensajeAvisoListo,
   mensajeDemoraSeguimiento,
   mensajeSeguimiento,
+  mensajeListoSeguimiento,
   modoCalificacion,
   resumenEspera,
   seActualizaSolo,
@@ -228,6 +229,15 @@ test("el aviso de listo no inventa un servicio si no vino", () => {
     mensajeAvisoListo({ nombre: "Ana", patente: "AB123CD" }, "", url),
     `Hola Ana, tu AB123CD ya está listo para retirar. Podés consultar el detalle acá: ${url}`,
   );
+});
+
+test("el aviso de listo incluye cliente, patente, servicio y enlace de la orden", () => {
+  const mensaje = mensajeListoSeguimiento(destinatario, "Lavado completo", url);
+  assert.ok(mensaje.includes(destinatario.nombre));
+  assert.ok(mensaje.includes(`${destinatario.patente} está listo para retirar`));
+  assert.ok(mensaje.includes("Servicio: Lavado completo"));
+  assert.ok(mensaje.endsWith(url));
+  assert.equal(decodeURIComponent(linkWhatsApp(destinatario, url, mensaje).split("text=")[1]), mensaje);
 });
 
 test("el aviso manual de demora indica el servicio, el nuevo horario y solo el link de esa orden", () => {
