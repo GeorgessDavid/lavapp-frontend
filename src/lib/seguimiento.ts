@@ -112,6 +112,24 @@ export function linkWhatsApp(destinatario: DestinatarioSeguimiento, url: string,
   return `https://wa.me/${telefono ?? ""}?text=${mensaje}`;
 }
 
+/**
+ * El mensaje manual de HU-36: avisa que el vehículo terminó el lavado y está listo para
+ * retirar. Incluye el servicio y el link de seguimiento de esa orden.
+ */
+export function mensajeAvisoListo(
+  destinatario: DestinatarioSeguimiento,
+  servicio: string,
+  url: string,
+) {
+  const nombre = destinatario.nombre.trim().split(/\s+/)[0];
+  const vehiculo =
+    [destinatario.modelo?.trim(), destinatario.patente].filter(Boolean).join(" ") || "vehículo";
+  const saludo = nombre ? `Hola ${nombre}` : "Hola";
+  const detalleServicio = servicio.trim() ? ` Servicio: ${servicio.trim()}.` : "";
+  return `${saludo}, tu ${vehiculo} ya está listo para retirar.${detalleServicio} ` +
+    `Podés consultar el detalle acá: ${url}`;
+}
+
 /** HU-36: mensaje de retiro para el vehículo y servicio de la misma orden finalizada. */
 export function mensajeListoSeguimiento(destinatario: DestinatarioSeguimiento, servicio: string, url: string) {
   return `Hola ${destinatario.nombre}, tu vehículo ${destinatario.patente} está listo para retirar. Servicio: ${servicio}. Seguimiento: ${url}`;
