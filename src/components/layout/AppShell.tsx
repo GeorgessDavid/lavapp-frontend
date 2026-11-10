@@ -46,6 +46,7 @@ const nav: {
   { href: "/vehiculos", label: "Vehículos", icon: Users },
   { href: "/servicios", label: "Servicios", icon: Timer },
   { href: "/plan", label: "Mi Plan", icon: BadgeDollarSign },
+  { href: "/admin/lavaderos", label: "Configuración", icon: Users, feature: "CONFIGURACION" },
 ];
 
 const ETIQUETA_ROL: Record<NonNullable<User["rolSistema"]>, string> = {
@@ -149,7 +150,9 @@ export function AppShell({ children }: { children: ReactNode }) {
           {items.map((item) => {
             const active = pathname === item.href;
             const Icon = item.icon;
-            const hasFeature =
+            // Permitir acceso total si el usuario es Administrador de LavApp
+            const isAdmin = user.rolSistema === "ADMIN_LAVAPP";
+            const hasFeature = isAdmin ||
               !item.feature ||
               Boolean(
                 planForUser?.funcionalidades.includes(item.feature),

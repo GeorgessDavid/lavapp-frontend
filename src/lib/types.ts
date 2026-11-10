@@ -64,7 +64,8 @@ export type PlanFeature =
   | "ROLES_PERMISOS"
   | "CONFIGURACION_AVANZADA"
   | "SOPORTE_PRIORITARIO"
-  | "INTEGRACIONES";
+  | "INTEGRACIONES"
+  | "CONFIGURACION";
 
 export interface PlanActual {
   lavaderoId: number;

@@ -27,6 +27,7 @@ const PERMISO_POR_RUTA: Record<string, (usuario: Usuario) => boolean> = {
   "/plan": puedeGestionarPlan,
   "/reportes": puedeVerReportes,
   "/servicios": puedeConfigurarOperacion,
+  "/admin/lavaderos": puedeAdministrarLavaderos,
 };
 
 /** Si el usuario puede abrir esa ruta del operador. Las que no están listadas solo piden sesión. */
@@ -58,3 +59,9 @@ export function destinoTrasLogin(usuario: Pick<User, "rol" | "rolSistema">, sigu
   if ((ruta === "/flotas") !== (usuario.rol === "FLOTA")) return inicio;
   return puedeAbrirRuta(usuario, ruta) ? siguiente : inicio;
 }
+
+// función que valida si el usuario es administrador de LavApp
+export function puedeAdministrarLavaderos(usuario: Usuario): boolean {
+  return usuario?.rolSistema === "ADMIN_LAVAPP";
+}
+

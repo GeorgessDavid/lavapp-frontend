@@ -491,3 +491,132 @@ export function asignarPuestoApi(ordenId: number, puestoId: number) {
     },
   );
 }
+
+// --- SERVICIOS DE ADMINISTRACIÓN / BACKOFFICE ---
+
+
+// async function fetchApi(endpoint: string, options: RequestInit = {}) {
+//   const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+  
+//   const headers = {
+//     'Content-Type': 'application/json',
+//     ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+//     ...options.headers,
+//   };
+
+  // const response = await fetch(`${API_URL}${endpoint}`, {
+  //   ...options,
+  //   headers,
+  // });
+
+//   if (!response.ok) {
+//     const errorBody = await response.text();
+//     throw new Error(errorBody || `Error en la petición: ${response.statusText}`);
+//   }
+
+//   // Si la respuesta es vacía (204 No Content)
+//   if (response.status === 204) return null;
+
+//   return response.json();
+// }
+
+// 1. Lavaderos y Capacidades
+export async function getLavaderosReal() {
+  return fetchApi('/lavaderos'); // O el endpoint correspondiente en LavaderoController
+}
+
+export async function registrarLavadero(data: {
+  nombre: string;
+  direccion: string;
+  capacidadPuestos: number;
+  email: string;
+  password: string;
+}) {
+  return fetchApi('/lavaderos', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function configurarCapacidadLavadero(lavaderoId: number, data: { puestosTotales: number }) {
+  return fetchApi(`/lavaderos/${lavaderoId}/capacidad`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+// // 2. Creación de Usuarios (Dueño / Empleado)
+// export async function registrarUsuarioRol(data: {
+//   nombre: string;
+//   email: string;
+//   password: string;
+//   rol: 'DUENO' | 'EMPLEADO';
+//   lavaderoId?: number;
+// }) {
+//   return fetchApi('/auth/registro', { // O el endpoint de gestión de usuarios del backoffice
+//     method: 'POST',
+//     body: JSON.stringify(data),
+//   });
+// }
+async function fetchApi(endpoint: string, options: RequestInit = {}) {
+  let token = null;
+
+  if (typeof window !== 'undefined') {
+    // Buscar el token en posibles claves de almacenamiento local
+    token = localStorage.getItem('token') || localStorage.getItem('accessToken') || localStorage.getItem('jwt');
+    
+    if (!token) {
+      const sesionStr = localStorage.getItem('sesion') || localStorage.getItem('user');
+      if (sesionStr) {
+        try {
+          const sesionData = JSON.parse(sesionStr);
+          token = sesionData.token || sesionData.accessToken || sesionData.jwt;
+        } catch (e) {
+          // Ignorar error de parseo
+        }
+      }
+    }
+  }
+
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+    ...(options.headers as Record<string, string>),
+  };
+
+  const response = await fetch(`${API_URL}${endpoint}`, {
+    ...options,
+    headers,
+    credentials: 'include', // <-- Crucial si el backend autentica por Cookies de sesión
+  });
+
+  if (!response.ok) {
+    const errorBody = await response.text();
+    throw new Error(errorBody || `Error en la petición: ${response.statusText}`);
+  }
+
+  if (response.status === 204) return null;
+
+  return response.json();
+}
+
+// Asegúrate de que el endpoint apunte al controlador de administración o registro correcto:
+export async function registrarUsuarioRol(data: {
+  nombre: string;
+  email: string;
+  password: string;
+  rol: 'DUENO' | 'EMPLEADO';
+  lavaderoId?: number;
+}) {
+  // return fetchApi('/auth/registro', { // O '/backoffice/usuarios' si tu backend lo tiene separado para administradores
+    return fetchApi(`/lavaderos/${data.lavaderoId}/usuarios`,{
+    method: 'POST',
+    body: JSON.stringify({
+      nombre: data.nombre,
+      email: data.email,
+      password: data.password,
+      rol: data.rol,
+      lavaderoId: data.lavaderoId, // Enviamos el lavaderoId explícito en el body
+    }),
+  });
+}
