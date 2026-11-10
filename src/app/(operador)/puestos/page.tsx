@@ -139,7 +139,7 @@ function PanelPuestos({ lavaderoId }: { lavaderoId: number }) {
       setMensaje(`Lavado iniciado para ${orden.patente}.`);
     } catch (err) {
       setError(err instanceof ApiError && err.status === 409
-        ? "No se pudo iniciar: la orden ya no está en espera."
+        ? "No se pudo iniciar: verificá que la orden siga en espera y tenga un puesto asignado."
         : err instanceof ApiError ? err.message : "No se pudo iniciar el lavado.");
     }
     try {
