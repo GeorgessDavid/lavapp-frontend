@@ -526,7 +526,7 @@ export async function getLavaderosReal() {
 }
 
 export async function registrarLavadero(data: {
-  nombre: string;
+  nombreLavadero: string;
   direccion: string;
   capacidadPuestos: number;
   email: string;
