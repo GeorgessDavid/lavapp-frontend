@@ -13,6 +13,8 @@ export default function AdminPanel() {
   const [nombreLavadero, setNombreLavadero] = useState('');
   const [direccion, setDireccion] = useState('');
   const [capacidad, setCapacidad] = useState(5);
+  const [emailDueno, setEmailDueno] = useState('');
+  const [passwordDueno, setPasswordDueno] = useState('');
 
   // Estados formulario Usuario (Dueño / Empleado)
   const [nombreUsuario, setNombreUsuario] = useState('');
@@ -41,14 +43,18 @@ export default function AdminPanel() {
 
     try {
       await registrarLavadero({
-        nombre: nombreLavadero,
+        nombreLavadero,
         direccion,
         capacidadPuestos: Number(capacidad),
+        email: emailDueno,
+        password: passwordDueno,
       });
       setMensaje({ texto: '¡Lavadero registrado con éxito en la Base de Datos!', tipo: 'success' });
       setNombreLavadero('');
       setDireccion('');
       setCapacidad(5);
+      setEmailDueno('');
+      setPasswordDueno('');
       cargarLavaderos();
     } catch (error: any) {
       setMensaje({ texto: `Error al registrar lavadero: ${error.message}`, tipo: 'error' });
@@ -123,6 +129,27 @@ export default function AdminPanel() {
               onChange={(e) => setCapacidad(Number(e.target.value))}
               required
               min={1}
+              className="w-full border p-2 rounded mt-1"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium">Email del Dueño</label>
+            <input
+              type="email"
+              value={emailDueno}
+              onChange={(e) => setEmailDueno(e.target.value)}
+              required
+              className="w-full border p-2 rounded mt-1"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium">Contraseña del Dueño</label>
+            <input
+              type="password"
+              value={passwordDueno}
+              onChange={(e) => setPasswordDueno(e.target.value)}
+              required
+              minLength={8}
               className="w-full border p-2 rounded mt-1"
             />
           </div>
