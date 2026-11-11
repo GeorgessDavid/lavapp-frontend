@@ -23,11 +23,12 @@ import {
 import { Logo } from "@/components/brand/Logo";
 import { useAccesoProtegido } from "@/components/layout/useAccesoProtegido";
 import { useApp } from "@/lib/store";
-import { fetchPlanActual } from "@/lib/api";
+import { apiConfig, fetchPlanActual } from "@/lib/api";
+import { fetchTiemposCola } from "@/lib/api-cola";
 import { puedeAbrirRuta } from "@/lib/permisos";
 import type { PlanActual, PlanFeature, User } from "@/lib/types";
 import { clock, todayLabel } from "@/lib/format";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 
 // Qué roles ven cada sección lo decide lib/permisos.ts (las mismas reglas que protegen la ruta).
 const nav: {
@@ -68,6 +69,8 @@ export function AppShell({ children }: { children: ReactNode }) {
   // En celular la barra lateral es un cajón que se abre desde el encabezado; en escritorio es
   // la columna fija de siempre. Se cierra al elegir una sección.
   const [menuAbierto, setMenuAbierto] = useState(false);
+  const [busqueda, setBusqueda] = useState("");
+  const [demorasReales, setDemorasReales] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -109,10 +112,35 @@ export function AppShell({ children }: { children: ReactNode }) {
     return () => clearTimeout(id);
   }, [toast, clearToast]);
 
-  const alerts = useMemo(
-    () => atenciones.filter((a) => a.demoraMin > 0 && a.estado !== "RETIRADO"),
-    [atenciones],
-  );
+  useEffect(() => {
+    if (apiConfig.USE_MOCK || !user?.lavaderoId) return;
+    const lavaderoId = user.lavaderoId;
+    let vigente = true;
+    const cargar = () => {
+      void fetchTiemposCola(lavaderoId)
+        .then((tiempos) => {
+          if (vigente) setDemorasReales(tiempos.filter((tiempo) => tiempo.demoraMin > 0).length);
+        })
+        .catch(() => {
+          if (vigente) setDemorasReales(0);
+        });
+    };
+    cargar();
+    const id = window.setInterval(cargar, 30_000);
+    return () => {
+      vigente = false;
+      window.clearInterval(id);
+    };
+  }, [user]);
+
+  const demorasDemo = atenciones.filter((a) => a.demoraMin > 0 && a.estado !== "RETIRADO").length;
+  const hayDemoras = apiConfig.USE_MOCK ? demorasDemo > 0 : demorasReales > 0;
+
+  function irABusqueda(event: FormEvent) {
+    event.preventDefault();
+    const texto = busqueda.trim();
+    router.push(texto ? `/vehiculos?q=${encodeURIComponent(texto)}` : "/vehiculos");
+  }
 
   if (!user) {
     return sesion === "verificando" ? (
@@ -227,20 +255,30 @@ export function AppShell({ children }: { children: ReactNode }) {
           <p className="hidden text-xs capitalize text-slate-400 lg:block">
             {todayLabel()} · {now}
           </p>
-          <div className="hidden max-w-lg flex-1 items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm text-slate-400 sm:flex">
+          <form
+            className="hidden max-w-lg flex-1 items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm text-slate-400 sm:flex"
+            onSubmit={irABusqueda}
+          >
             <Search className="h-4 w-4" />
             <input
-              className="w-full bg-transparent outline-none"
+              className="w-full bg-transparent text-navy outline-none"
+              aria-label="Buscar cliente, vehículo o patente"
               placeholder="Buscar cliente, vehículo o patente..."
+              value={busqueda}
+              onChange={(event) => setBusqueda(event.target.value)}
             />
-          </div>
+          </form>
           <div className="flex items-center gap-3">
-            <span className="relative grid h-10 w-10 place-items-center rounded-full bg-white text-navy shadow-sm">
+            <Link
+              href="/dashboard"
+              aria-label={hayDemoras ? "Hay demoras en la cola" : "Sin demoras"}
+              className="relative grid h-10 w-10 place-items-center rounded-full bg-white text-navy shadow-sm"
+            >
               <Bell className="h-4 w-4" />
-              {alerts.length > 0 && (
+              {hayDemoras && (
                 <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-orange-500" />
               )}
-            </span>
+            </Link>
             <div className="flex items-center gap-2 rounded-full bg-white py-1.5 pr-3 pl-1.5 shadow-sm">
               <span className="grid h-8 w-8 place-items-center rounded-full bg-[#6C5CE7] text-xs font-bold text-white">
                 {user.nombre

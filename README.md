@@ -77,6 +77,14 @@ En modo real, además (HU-16 y HU-28):
   tiempos del backend (HT-10), cada fila dice además en qué puesto se asume que se atiende y, si una
   reserva que todavía no llegó le corrió el inicio, "Después de la reserva de las HH:MM".
 
+La tarjeta "Capacidad del playón" en modo real sale de `GET /lavaderos/{id}/capacidad`
+(ocupados sobre el máximo). Si el lavadero todavía no tiene máximo, dice "Sin configurar".
+En modo demo sigue el playón del mock. Lo mismo muestra la tarjeta y el anillo de `/ingresos`.
+
+`/dashboard` en modo real arma la cola, los puestos y las demoras con las órdenes del lavadero.
+`/vehiculos` lista los clientes y vehículos cargados. El buscador del encabezado filtra esa lista
+y la campana se enciende solo si hay una demora registrada en la cola.
+
 ## Duración de los servicios (HU-54)
 
 `/servicios`, en el menú del dueño, lista los servicios del lavadero con su duración estimada y deja

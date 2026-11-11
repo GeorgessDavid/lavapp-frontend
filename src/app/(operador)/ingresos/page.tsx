@@ -16,6 +16,7 @@ import {
   crearClienteReserva,
   crearOrdenApi,
   crearVehiculoReserva,
+  fetchCapacidad,
   fetchOrdenes,
   listarClientesReserva,
   listarServiciosReserva,
@@ -25,6 +26,12 @@ import {
   type ReservaVehiculo,
 } from "@/lib/api";
 import type { OrdenColaApi } from "@/lib/types";
+import {
+  lecturaCapacidadFallida,
+  porcentajeCapacidadPlayon,
+  textoCapacidadPlayon,
+  type LecturaCapacidadPlayon,
+} from "@/lib/capacidad-playon";
 
 type ClienteIngreso = {
   id: string;
@@ -101,6 +108,7 @@ export default function IngresosPage() {
   const [errorEnvio, setErrorEnvio] = useState("");
   const [exito, setExito] = useState("");
   const [recarga, setRecarga] = useState(0);
+  const [capacidadPlayon, setCapacidadPlayon] = useState<LecturaCapacidadPlayon | null>(null);
 
   function limpiarMensajeCampo(campo: CampoIngreso) {
     setErrores((actuales) => {
@@ -149,6 +157,24 @@ export default function IngresosPage() {
             esDeHoy(orden.ingreso),
           ),
         );
+        try {
+          const actual = await fetchCapacidad(lavaderoId, 0);
+          if (vigente) {
+            setCapacidadPlayon({
+              estado: "ok",
+              ocupados: actual.lugaresOcupados,
+              maximo: actual.capacidadMaxima,
+            });
+          }
+        } catch (errorCapacidad) {
+          if (vigente) {
+            setCapacidadPlayon(
+              lecturaCapacidadFallida(
+                errorCapacidad instanceof ApiError ? errorCapacidad.status : 0,
+              ),
+            );
+          }
+        }
         setErrorCatalogos("");
       } catch (error) {
         if (vigente) {
@@ -391,9 +417,15 @@ export default function IngresosPage() {
     }
   }
 
-  const ocupacion = Math.round(
-    (boxes.filter((b) => b.estado === "OCUPADO").length / boxes.length) * 100,
-  );
+  const capacidadVisible: LecturaCapacidadPlayon | null = !esReal
+    ? {
+        estado: "ok",
+        ocupados: boxes.filter((b) => b.estado === "OCUPADO").length,
+        maximo: boxes.length,
+      }
+    : capacidadPlayon;
+  const ocupacion = porcentajeCapacidadPlayon(capacidadVisible);
+  const textoPlayon = textoCapacidadPlayon(capacidadVisible);
   const totalIngresos = esReal ? ordenesApi.length : atenciones.length;
   const enEsperaHoy = esReal
     ? ordenesApi.filter((orden) => orden.estado === "EN_ESPERA").length
@@ -435,7 +467,7 @@ export default function IngresosPage() {
         />
         <KpiCard
           label="Capacidad"
-          value={`${boxes.filter((b) => b.estado === "OCUPADO").length}/${boxes.length}`}
+          value={textoPlayon}
           tone="green"
           icon={<Sparkles className="h-5 w-5" />}
         />
@@ -839,16 +871,16 @@ export default function IngresosPage() {
               <div
                 className="grid h-28 w-28 place-items-center rounded-full"
                 style={{
-                  background: `conic-gradient(#6C5CE7 ${ocupacion}%, #EEF2FF ${ocupacion}%)`,
+                  background: `conic-gradient(#6C5CE7 ${ocupacion ?? 0}%, #EEF2FF ${ocupacion ?? 0}%)`,
                 }}
               >
                 <div className="grid h-20 w-20 place-items-center rounded-full bg-white text-lg font-bold">
-                  {ocupacion}%
+                  {ocupacion === null ? "—" : `${ocupacion}%`}
                 </div>
               </div>
               <p className="text-sm text-slate-500">
-                Los vehículos listos siguen ocupando lugar hasta el retiro. El
-                aviso de WhatsApp acelera esa rotación.
+                {capacidadVisible?.estado === "ok" ? `${textoPlayon} ocupados. ` : ""}
+                Los vehículos listos siguen ocupando lugar hasta el retiro.
               </p>
             </div>
           </Card>
