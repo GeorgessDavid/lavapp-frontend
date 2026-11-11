@@ -9,8 +9,15 @@ import { useLookups } from "@/lib/lookups";
 import { time } from "@/lib/format";
 import { tienePuestoAsignado } from "@/lib/box-assignment";
 import { CapacidadResumen } from "@/components/capacity/CapacidadResumen";
+import { PanelOperativo } from "@/components/panel/PanelOperativo";
+import { apiConfig } from "@/lib/api";
 
 export default function DashboardPage() {
+  if (!apiConfig.USE_MOCK) return <PanelOperativo />;
+  return <DashboardDemo />;
+}
+
+function DashboardDemo() {
   const { atenciones, boxes, avanzar, iniciarLavado } = useApp();
   const { cliente, vehiculo, serviciosDe } = useLookups();
 
