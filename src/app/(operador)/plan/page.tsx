@@ -13,6 +13,7 @@ import { useApp } from "@/lib/store";
 import { apiConfig, fetchPlanActual, simulatePlanChange } from "@/lib/api";
 import { money } from "@/lib/format";
 import { funcionalidadesSeparadas, planes } from "@/lib/plans";
+import { puedeGestionarPlan } from "@/lib/permisos";
 import type { PlanActual } from "@/lib/types";
 
 export default function MiPlanPage() {
@@ -51,7 +52,7 @@ export default function MiPlanPage() {
 
   useEffect(() => {
     if (!user) return;
-    if (user.rol !== "DUENO") {
+    if (!puedeGestionarPlan(user)) {
       router.replace("/dashboard");
       return;
     }
@@ -85,7 +86,7 @@ export default function MiPlanPage() {
     return () => window.removeEventListener("focus", cargarPlan);
   }, [cargarPlan]);
 
-  if (!user || user.rol !== "DUENO") return null;
+  if (!user || !puedeGestionarPlan(user)) return null;
 
   const activePlan = planes.find((plan) => plan.nombre === planActual?.nombre);
   const errorVisible =

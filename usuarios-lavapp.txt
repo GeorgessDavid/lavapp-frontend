@@ -1,0 +1,46 @@
+LAVAPP - USUARIOS DE LA BASE DE DATOS (ambiente local / demo)
+==============================================================
+Contraseña de TODOS los usuarios:  Demo1234!
+(D mayúscula, "emo", 1234 y el signo de exclamación al final)
+
+La tabla usuarios no guarda nombres de persona: el "nombre" de cada usuario
+es el del lavadero al que pertenece. El admin no pertenece a ningún lavadero.
+
+--------------------------------------------------------------
+A) USUARIOS DEL SEED DE DEMO (ya cargados en la base)
+--------------------------------------------------------------
+ID  EMAIL                          ROL              LAVADERO              ESTADO / NOTAS
+ 1  admin@lavapp.com.ar            admin_lavapp     (ninguno)             Ve todos los lavaderos y el backoffice
+ 2  pepe.duenio@donpepe.com.ar     dueno_lavadero   Lavadero Don Pepe     Plan Pro. El de más datos: usar para probar todo
+ 3  encargado@donpepe.com.ar       encargado        Lavadero Don Pepe     Plan Pro
+ 4  empleado@donpepe.com.ar        empleado         Lavadero Don Pepe     Plan Pro
+ 5  duenio@autospanorte.com.ar     dueno_lavadero   AutoSpa Norte         Plan Básico. Capacidad llena (el ingreso da 409)
+ 6  duenio@brillototal.com.ar      dueno_lavadero   Brillo Total          Plan Empresa. Capacidad sin configurar
+ 7  inactivo@donpepe.com.ar        empleado         Lavadero Don Pepe     NO PUEDE ENTRAR: usuario inactivo (login da 403)
+ 8  baja@donpepe.com.ar            empleado         Lavadero Don Pepe     NO PUEDE ENTRAR: dado de baja (login da 401)
+ 9  duenio@elfaro.com.ar           dueno_lavadero   Lavadero El Faro      Plan Básico. Lavadero inactivo, suscripción cancelada
+
+--------------------------------------------------------------
+B) USUARIOS DE LOS GRUPOS (existen después de correr lavapp-datos-grupos.sql)
+--------------------------------------------------------------
+Todos con rol dueno_lavadero, plan Pro y su propio lavadero con 3 puestos,
+4 servicios, 2 empleados y 3 clientes con vehículo.
+
+ID   EMAIL                  ROL              LAVADERO
+10+  grupo1@grupo.com.ar    dueno_lavadero   Lavadero Grupo 1
+10+  grupo2@grupo.com.ar    dueno_lavadero   Lavadero Grupo 2
+10+  grupo3@grupo.com.ar    dueno_lavadero   Lavadero Grupo 3
+10+  grupo4@grupo.com.ar    dueno_lavadero   Lavadero Grupo 4
+10+  grupo5@grupo.com.ar    dueno_lavadero   Lavadero Grupo 5
+10+  grupo6@grupo.com.ar    dueno_lavadero   Lavadero Grupo 6
+10+  grupo7@grupo.com.ar    dueno_lavadero   Lavadero Grupo 7
+(los ids exactos pueden variar; el seed ocupa del 1 al 9)
+
+--------------------------------------------------------------
+IMPORTANTE
+--------------------------------------------------------------
+- Estas credenciales son solo para desarrollo y demo. No usarlas en producción.
+- No subir este archivo al repositorio de GitHub.
+- Para loguearse, el front tiene que llamar a POST /auth/authenticate del backend.
+  Las cuentas "Modo demo" del front (operador@lavapp.com, dueno@lavapp.com,
+  flota@lavapp.com, grupo5@lavapp.com) no existen en esta base.

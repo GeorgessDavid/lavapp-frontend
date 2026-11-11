@@ -6,6 +6,7 @@ import type {
   OrdenTrabajoApi,
   PlanActual,
   Role,
+  RolSistema,
   User,
 } from "./types";
 import { NEXT_STAGE, users, atenciones as seedAtenciones } from "./mock-data";
@@ -36,7 +37,7 @@ export function setOnUnauthorized(handler: (() => void) | null) {
   onUnauthorized = handler;
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+export async function request<T>(path: string, init?: RequestInit): Promise<T> {
   // La autenticación es por cookie de sesión (LAVAPP_SESSION, HttpOnly): el navegador la manda
   // solo si la request va con credentials: "include" y el origen está habilitado en el backend.
   const res = await fetch(`${API_URL}${path}`, {
@@ -197,21 +198,20 @@ export function crearReservaApi(
 // Autenticación (backend: POST /auth/authenticate, GET /auth/me, POST /auth/logout)
 // ----------------------------------------------------------------------------
 
-type RolApi = "ADMIN_LAVAPP" | "DUENO_LAVADERO" | "ENCARGADO" | "EMPLEADO";
-
 /** Usuario tal como lo devuelve el backend en /auth/authenticate y /auth/me. */
 export interface UsuarioApi {
   id: number;
   email: string;
-  rol: RolApi;
+  rol: RolSistema;
   lavaderoId: number | null;
 }
 
 /**
  * Los roles del backend se proyectan sobre los del front: dueño y admin de LavApp ven la
  * app completa; encargados y empleados operan. FLOTA no existe en el backend (solo demo).
+ * El rol original se conserva en `rolSistema`, que es el que decide los permisos.
  */
-const ROL_API_A_ROLE: Record<RolApi, Role> = {
+const ROL_API_A_ROLE: Record<RolSistema, Role> = {
   ADMIN_LAVAPP: "DUENO",
   DUENO_LAVADERO: "DUENO",
   ENCARGADO: "OPERADOR",
@@ -235,9 +235,17 @@ export function toUser(usuario: UsuarioApi): User {
     nombre: nombreDesdeEmail(usuario.email),
     email: usuario.email,
     rol: ROL_API_A_ROLE[usuario.rol] ?? "OPERADOR",
+    rolSistema: usuario.rol,
     lavaderoId: usuario.lavaderoId ?? undefined,
   };
 }
+
+/** En modo demo no hay backend: el operador de prueba actúa como encargado. */
+const ROL_DEMO_A_SISTEMA: Record<Role, RolSistema | undefined> = {
+  DUENO: "DUENO_LAVADERO",
+  OPERADOR: "ENCARGADO",
+  FLOTA: undefined,
+};
 
 export async function loginRequest(
   email: string,
@@ -253,6 +261,8 @@ export async function loginRequest(
       nombre: found.nombre,
       email: found.email,
       rol: found.rol,
+      rolSistema: ROL_DEMO_A_SISTEMA[found.rol],
+      lavaderoId: found.lavaderoId,
     };
   }
   const usuario = await request<UsuarioApi>("/auth/authenticate", {
@@ -295,6 +305,17 @@ export async function fetchOrdenes(
   );
 }
 
+/** Alta de un ingreso espontáneo. La orden siempre arranca EN_ESPERA. */
+export function crearOrdenApi(
+  lavaderoId: number,
+  payload: { clienteId: number; vehiculoId: number; servicioId: number },
+) {
+  return request<OrdenColaApi>(`/lavaderos/${lavaderoId}/ordenes`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
 /**
  * Finaliza el lavado de una orden (HU-34): EN_PROGRESO -> LISTO, con el momento en finLavado.
  * El backend responde 409 si la orden no está en lavado (por ejemplo, si ya fue finalizada).
@@ -305,6 +326,14 @@ export async function finalizarServicioApi(
   return request<OrdenTrabajoApi>(`/ordenes/${ordenId}/finalizar-servicio`, {
     method: "PATCH",
   });
+}
+
+export function retirarOrdenApi(ordenId: number): Promise<OrdenTrabajoApi> {
+  return request<OrdenTrabajoApi>(`/ordenes/${ordenId}/retirar`, { method: "PATCH" });
+}
+
+export function iniciarLavadoApi(ordenId: number): Promise<OrdenTrabajoApi> {
+  return request<OrdenTrabajoApi>(`/ordenes/${ordenId}/iniciar-lavado`, { method: "PATCH" });
 }
 
 export async function patchEstado(
@@ -416,9 +445,178 @@ export function nextStageOf(estado: Atencion["estado"]) {
   return NEXT_STAGE[estado];
 }
 
-export function homeForRole(rol: Role) {
-  if (rol === "FLOTA") return "/flotas";
-  return "/dashboard";
+export const apiConfig = { API_URL, USE_MOCK };
+
+export type EstadoOrdenPuesto =
+  | "EN_ESPERA"
+  | "EN_PROGRESO"
+  | "LISTO"
+  | "ENTREGADO"
+  | "CANCELADO";
+
+export interface OrdenParaPuesto {
+  ordenId: number;
+  estado: EstadoOrdenPuesto;
+  patente: string;
+  modelo: string | null;
+  clienteNombre: string;
+  servicioNombre: string;
+  puestoId: number | null;
 }
 
-export const apiConfig = { API_URL, USE_MOCK };
+export async function listarOrdenesParaPuestos(lavaderoId: number) {
+  const estados: EstadoOrdenPuesto[] = [
+    "EN_ESPERA",
+    "EN_PROGRESO",
+    "LISTO",
+  ];
+
+  const resultados = await Promise.all(
+    estados.map((estado) =>
+      request<OrdenParaPuesto[]>(
+        `/lavaderos/${lavaderoId}/ordenes?estado=${estado}`,
+      ),
+    ),
+  );
+
+  return resultados.flat();
+}
+
+export function asignarPuestoApi(ordenId: number, puestoId: number) {
+  return request<{ id: number; puestoId: number | null }>(
+    `/ordenes/${ordenId}/asignar-puesto`,
+    {
+      method: "PATCH",
+      body: JSON.stringify({ puestoId }),
+    },
+  );
+}
+
+// --- SERVICIOS DE ADMINISTRACIÓN / BACKOFFICE ---
+
+
+// async function fetchApi(endpoint: string, options: RequestInit = {}) {
+//   const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+  
+//   const headers = {
+//     'Content-Type': 'application/json',
+//     ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+//     ...options.headers,
+//   };
+
+  // const response = await fetch(`${API_URL}${endpoint}`, {
+  //   ...options,
+  //   headers,
+  // });
+
+//   if (!response.ok) {
+//     const errorBody = await response.text();
+//     throw new Error(errorBody || `Error en la petición: ${response.statusText}`);
+//   }
+
+//   // Si la respuesta es vacía (204 No Content)
+//   if (response.status === 204) return null;
+
+//   return response.json();
+// }
+
+// 1. Lavaderos y Capacidades
+export async function getLavaderosReal() {
+  return fetchApi('/lavaderos'); // O el endpoint correspondiente en LavaderoController
+}
+
+export async function registrarLavadero(data: {
+  nombre: string;
+  direccion: string;
+  capacidadPuestos: number;
+  email: string;
+  password: string;
+}) {
+  return fetchApi('/lavaderos', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function configurarCapacidadLavadero(lavaderoId: number, data: { puestosTotales: number }) {
+  return fetchApi(`/lavaderos/${lavaderoId}/capacidad`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+// // 2. Creación de Usuarios (Dueño / Empleado)
+// export async function registrarUsuarioRol(data: {
+//   nombre: string;
+//   email: string;
+//   password: string;
+//   rol: 'DUENO' | 'EMPLEADO';
+//   lavaderoId?: number;
+// }) {
+//   return fetchApi('/auth/registro', { // O el endpoint de gestión de usuarios del backoffice
+//     method: 'POST',
+//     body: JSON.stringify(data),
+//   });
+// }
+async function fetchApi(endpoint: string, options: RequestInit = {}) {
+  let token = null;
+
+  if (typeof window !== 'undefined') {
+    // Buscar el token en posibles claves de almacenamiento local
+    token = localStorage.getItem('token') || localStorage.getItem('accessToken') || localStorage.getItem('jwt');
+    
+    if (!token) {
+      const sesionStr = localStorage.getItem('sesion') || localStorage.getItem('user');
+      if (sesionStr) {
+        try {
+          const sesionData = JSON.parse(sesionStr);
+          token = sesionData.token || sesionData.accessToken || sesionData.jwt;
+        } catch (e) {
+          // Ignorar error de parseo
+        }
+      }
+    }
+  }
+
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+    ...(options.headers as Record<string, string>),
+  };
+
+  const response = await fetch(`${API_URL}${endpoint}`, {
+    ...options,
+    headers,
+    credentials: 'include', // <-- Crucial si el backend autentica por Cookies de sesión
+  });
+
+  if (!response.ok) {
+    const errorBody = await response.text();
+    throw new Error(errorBody || `Error en la petición: ${response.statusText}`);
+  }
+
+  if (response.status === 204) return null;
+
+  return response.json();
+}
+
+// Asegúrate de que el endpoint apunte al controlador de administración o registro correcto:
+export async function registrarUsuarioRol(data: {
+  nombre: string;
+  email: string;
+  password: string;
+  rol: 'DUENO' | 'EMPLEADO';
+  lavaderoId?: number;
+}) {
+  // return fetchApi('/auth/registro', { // O '/backoffice/usuarios' si tu backend lo tiene separado para administradores
+    return fetchApi(`/lavaderos/${data.lavaderoId}/usuarios`,{
+    method: 'POST',
+    body: JSON.stringify({
+      nombre: data.nombre,
+      email: data.email,
+      password: data.password,
+      rol: data.rol,
+      lavaderoId: data.lavaderoId, // Enviamos el lavaderoId explícito en el body
+    }),
+  });
+}

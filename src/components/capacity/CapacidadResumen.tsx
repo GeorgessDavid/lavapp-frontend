@@ -11,6 +11,7 @@ import {
 import { AlertTriangle, CarFront, CircleGauge, RefreshCw } from "lucide-react";
 import { useApp } from "@/lib/store";
 import { fetchCapacidad, updateCapacidad } from "@/lib/api";
+import { puedeConfigurarOperacion } from "@/lib/permisos";
 import type { CapacidadActual } from "@/lib/types";
 
 const POLL_INTERVAL_MS = 5000;
@@ -143,6 +144,9 @@ export function CapacidadResumen({ compacto = false }: { compacto?: boolean }) {
 
   if (!user || user.rol === "FLOTA") return null;
 
+  // El backend responde 403 si otro rol intenta modificarla; acá ni se ofrece el formulario.
+  const puedeConfigurar = puedeConfigurarOperacion(user);
+
   if (user.lavaderoId === undefined) {
     return (
       <section role="alert" className="rounded-2xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-900">
@@ -259,7 +263,13 @@ export function CapacidadResumen({ compacto = false }: { compacto?: boolean }) {
         </div>
       )}
 
-      {!compacto && (
+      {!compacto && !puedeConfigurar && (
+        <p className="border-t border-slate-100 bg-slate-50/70 px-5 py-4 text-sm text-slate-500">
+          Solo el dueño o el encargado del lavadero pueden modificar la capacidad máxima.
+        </p>
+      )}
+
+      {!compacto && puedeConfigurar && (
         <form
           onSubmit={guardarCapacidad}
           className="flex flex-col gap-3 border-t border-slate-100 bg-slate-50/70 p-5 sm:flex-row sm:items-end"

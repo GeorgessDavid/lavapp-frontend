@@ -1,25 +1,24 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Logo } from "@/components/brand/Logo";
 import { Plate, StageBadge } from "@/components/ui/badges";
 import { Card } from "@/components/ui/Card";
+import { useAccesoProtegido } from "@/components/layout/useAccesoProtegido";
 import { useApp } from "@/lib/store";
 import { time } from "@/lib/format";
 import { useLookups } from "@/lib/lookups";
 import { LogOut } from "lucide-react";
 
 export default function FlotasPage() {
-  const { user, logout, flotas, atenciones, vehiculos } = useApp();
+  const { logout, flotas, atenciones, vehiculos } = useApp();
+  // Solo el perfil de flota: sin sesión va al login y un operador, a su propio inicio.
+  const user = useAccesoProtegido("flota");
   const { cliente, vehiculo, serviciosDe } = useLookups();
   const router = useRouter();
   const [empresaId, setEmpresaId] = useState(flotas[0]?.id ?? "");
   const empresa = flotas.find((f) => f.id === empresaId) ?? flotas[0];
-
-  useEffect(() => {
-    if (!user) router.replace("/login");
-  }, [user, router]);
 
   if (!user) return null;
 

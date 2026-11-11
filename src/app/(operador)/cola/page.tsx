@@ -1,15 +1,52 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertTriangle, CalendarClock, Car, Clock, Droplets, Sparkles } from "lucide-react";
+import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  AlertTriangle,
+  CalendarClock,
+  Car,
+  CheckCircle2,
+  ChevronDown,
+  ChevronUp,
+  Clock,
+  Droplets,
+  Sparkles,
+  Timer,
+} from "lucide-react";
 import { Card, KpiCard } from "@/components/ui/Card";
 import { Plate, StageBadge } from "@/components/ui/badges";
+import { AvisoListoDialog } from "@/components/seguimiento/AvisoListoDialog";
+import { LinkSeguimiento } from "@/components/seguimiento/LinkSeguimiento";
+import { consultarAvisoListo, type AvisoListoApi } from "@/lib/api-aviso";
 import { useApp } from "@/lib/store";
 import { useLookups } from "@/lib/lookups";
 import { time, timeWithSeconds } from "@/lib/format";
 import { tienePuestoAsignado } from "@/lib/box-assignment";
-import { ApiError, apiConfig, fetchOrdenes, finalizarServicioApi } from "@/lib/api";
+import { ApiError, apiConfig, fetchCapacidad, fetchOrdenes, finalizarServicioApi, retirarOrdenApi } from "@/lib/api";
+import {
+  lecturaCapacidadFallida,
+  textoCapacidadPlayon,
+  type LecturaCapacidadPlayon,
+} from "@/lib/capacidad-playon";
+import {
+  fetchTiemposCola,
+  moverEnCola,
+  registrarDemora,
+  type DemoraApi,
+  type TiempoEstimadoApi,
+} from "@/lib/api-cola";
+import {
+  DEMORA_MAX,
+  DEMORA_MIN,
+  MOTIVO_MAX,
+  indexarTiempos,
+  lecturaTiempo,
+  mensajeDemora,
+  posicionDestino,
+  validarDemora,
+} from "@/lib/cola-operativa";
 import { estaEnLavado, tieneEtapaIntermedia } from "@/lib/etapas";
+import { mensajeDemoraSeguimiento, type DestinatarioSeguimiento } from "@/lib/seguimiento";
 import {
   armarFilasBackend,
   armarFilasLocales,
@@ -50,8 +87,25 @@ export default function ColaPage() {
   const [ordenesBackend, setOrdenesBackend] = useState<OrdenesBackend | null>(null);
   const [actualizadoEl, setActualizadoEl] = useState<string | null>(null);
   const [finalizando, setFinalizando] = useState<string | null>(null);
+  const [retirando, setRetirando] = useState<string | null>(null);
   const [errorBackend, setErrorBackend] = useState("");
   const [cargandoBackend, setCargandoBackend] = useState(false);
+  // HU-28: tiempos estimados por orden. Si esa consulta falla, la cola se muestra igual sin ellos.
+  const [tiempos, setTiempos] = useState<Map<number, TiempoEstimadoApi>>(() => new Map());
+  // HU-16: la fila que se está moviendo; mientras tanto no se acepta otro movimiento.
+  const [moviendo, setMoviendo] = useState<string | null>(null);
+  // HU-28: la orden a la que se le está registrando una demora (abre el diálogo).
+  const [demoraPara, setDemoraPara] = useState<{
+    ordenId: number;
+    destinatario: DestinatarioSeguimiento;
+    servicio: string;
+  } | null>(null);
+  // HU-53: el link de seguimiento de cualquier atención activa, espontánea o con reserva.
+  const [linkPara, setLinkPara] = useState<LinkParaOrden | null>(null);
+  // HU-36: el aviso manual de una orden LISTO y el estado ya confirmado de cada una.
+  const [avisoPara, setAvisoPara] = useState<number | null>(null);
+  const [avisosListos, setAvisosListos] = useState<Map<number, AvisoListoApi>>(() => new Map());
+  const [capacidadPlayon, setCapacidadPlayon] = useState<LecturaCapacidadPlayon | null>(null);
   const lavaderoId = user?.lavaderoId;
   const libres = boxes.filter((b) => b.estado === "DISPONIBLE");
   const activas = atenciones.filter((a) => a.estado !== "RETIRADO");
@@ -76,12 +130,32 @@ export default function ColaPage() {
 
     setCargandoBackend(true);
     try {
-      const [enEspera, enLavado, listas] = await Promise.all([
+      const [enEspera, enLavado, listas, tiemposApi, capacidad] = await Promise.all([
         fetchOrdenes(lavaderoId, "EN_ESPERA"),
         fetchOrdenes(lavaderoId, "EN_PROGRESO"),
         fetchOrdenes(lavaderoId, "LISTO"),
+        fetchTiemposCola(lavaderoId).catch(() => null),
+        fetchCapacidad(lavaderoId, 0)
+          .then((actual) => ({
+            estado: "ok" as const,
+            ocupados: actual.lugaresOcupados,
+            maximo: actual.capacidadMaxima,
+          }))
+          .catch((error: unknown) =>
+            lecturaCapacidadFallida(error instanceof ApiError ? error.status : 0),
+          ),
       ]);
+      const avisos = new Map<number, AvisoListoApi>();
+      await Promise.all(
+        listas.map(async (orden) => {
+          const aviso = await consultarAvisoListo(orden.ordenId).catch(() => null);
+          if (aviso) avisos.set(orden.ordenId, aviso);
+        }),
+      );
       setOrdenesBackend({ enEspera, enLavado, listas });
+      setCapacidadPlayon(capacidad);
+      setAvisosListos(avisos);
+      setTiempos(indexarTiempos(tiemposApi ?? []));
       setActualizadoEl(new Date().toISOString());
       setErrorBackend("");
     } catch (error) {
@@ -145,6 +219,46 @@ export default function ColaPage() {
     }
   };
 
+  const registrarRetiro = async (fila: FilaCola) => {
+    if (fila.tipo === "local") {
+      retirar(fila.atencion.id);
+      return;
+    }
+    setRetirando(idDeFila(fila));
+    try {
+      await retirarOrdenApi(fila.orden.ordenId);
+      notificar(`Retiro registrado: ${fila.orden.patente}. Se liberó su lugar en el playón.`);
+    } catch (error) {
+      notificar(error instanceof ApiError && error.status === 409
+        ? "No se pudo registrar el retiro: el vehículo ya no está listo para retirar."
+        : error instanceof Error ? error.message : "No se pudo registrar el retiro.");
+    } finally {
+      setRetirando(null);
+      void cargarColaBackend();
+    }
+  };
+
+  // HU-16: sube o baja un vehículo en espera. El backend devuelve la cola resultante y se muestra al
+  // instante; si el movimiento rompe la prioridad de una reserva próxima responde 409 con el motivo.
+  const totalEnEspera = ordenesBackend?.enEspera.length ?? 0;
+  const mover = async (fila: FilaCola, delta: -1 | 1) => {
+    if (fila.tipo !== "backend") return;
+    const destino = posicionDestino(fila.posicion, delta, totalEnEspera);
+    if (destino === null) return;
+    const { ordenId, patente } = fila.orden;
+    setMoviendo(idDeFila(fila));
+    try {
+      const enEspera = await moverEnCola(ordenId, destino);
+      setOrdenesBackend((actual) => (actual ? { ...actual, enEspera } : actual));
+      notificar(`Cola actualizada: ${patente} quedó en la posición ${destino}.`);
+    } catch (error) {
+      notificar(error instanceof Error ? error.message : "No se pudo cambiar el orden de la cola.");
+    } finally {
+      setMoviendo(null);
+      void cargarColaBackend();
+    }
+  };
+
   // En modo real la cola es lo que dice el backend y nada más; los datos de demo quedan para el
   // modo mock. Así la posición de cada vehículo es la que ve cualquier otro operador.
   const filas = useMemo<FilaCola[]>(() => {
@@ -190,7 +304,48 @@ export default function ColaPage() {
       cliente:
         orden?.clienteNombre ?? (`${c?.nombre ?? ""} ${c?.apellido ?? ""}`.trim() || "—"),
       servicio: orden?.servicioNombre ?? (a ? serviciosDe(a.servicioIds) : "—"),
+      tiempo: orden ? (tiempos.get(orden.ordenId) ?? null) : null,
     };
+  };
+
+  // HU-28: hora estimada de inicio (en espera) o de fin (en lavado), y la demora acumulada. HT-10: el
+  // puesto previsto y, si una reserva que todavía no llegó corrió el inicio, su horario.
+  const estimado = (tiempo: TiempoEstimadoApi | null) => {
+    if (!tiempo) return <span className="text-slate-300">—</span>;
+    const lectura = lecturaTiempo(tiempo);
+    return (
+      <span className="inline-flex flex-col gap-0.5">
+        {lectura.tipo === "estimado" ? (
+          <>
+            <span className="font-semibold text-slate-700">
+              {lectura.etiqueta} ~{time(lectura.hora)}
+              {lectura.puesto && <span className="font-normal text-slate-500"> · {lectura.puesto}</span>}
+            </span>
+            {lectura.esperaMin !== null && (
+              <span className="text-[11px] text-slate-400">
+                {lectura.esperaMin > 0 ? `Espera ${lectura.esperaMin} min` : "Puede empezar ya"}
+              </span>
+            )}
+            {lectura.reservaPrevia && (
+              <span className="inline-flex w-fit items-center gap-1 text-[11px] font-semibold text-violet-700">
+                <CalendarClock className="h-3 w-3" />
+                Después de la reserva de las {time(lectura.reservaPrevia)}
+              </span>
+            )}
+          </>
+        ) : (
+          <>
+            <span className="font-semibold text-slate-500">Sin estimar</span>
+            <span className="text-[11px] text-slate-400">{lectura.motivo}</span>
+          </>
+        )}
+        {tiempo.demoraMin > 0 && (
+          <span className="inline-flex w-fit items-center gap-1 rounded-full bg-orange-50 px-2 py-0.5 text-[11px] font-semibold text-orange-700">
+            <Timer className="h-3 w-3" />+{tiempo.demoraMin} min de demora
+          </span>
+        )}
+      </span>
+    );
   };
 
   const etiquetaOrigen = (origen: string) => (
@@ -223,10 +378,76 @@ export default function ColaPage() {
   const acciones = (fila: FilaCola) => {
     const a = fila.tipo === "local" ? fila.atencion : null;
     const orden = fila.tipo === "backend" ? fila.orden : null;
+    const aviso = orden ? avisosListos.get(orden.ordenId) : undefined;
     const rowId = idDeFila(fila);
     const { estado } = fila;
     return (
       <>
+        {orden?.estado === "EN_ESPERA" && (
+          <span className="inline-flex gap-1 align-middle">
+            <button
+              type="button"
+              aria-label={`Subir ${orden.patente} en la cola`}
+              title="Subir en la cola"
+              className="rounded-lg border border-slate-200 p-1 text-slate-500 hover:text-[#6C5CE7] disabled:cursor-not-allowed disabled:opacity-30"
+              disabled={moviendo !== null || posicionDestino(fila.posicion, -1, totalEnEspera) === null}
+              onClick={() => void mover(fila, -1)}
+            >
+              <ChevronUp className="h-3.5 w-3.5" />
+            </button>
+            <button
+              type="button"
+              aria-label={`Bajar ${orden.patente} en la cola`}
+              title="Bajar en la cola"
+              className="rounded-lg border border-slate-200 p-1 text-slate-500 hover:text-[#6C5CE7] disabled:cursor-not-allowed disabled:opacity-30"
+              disabled={moviendo !== null || posicionDestino(fila.posicion, 1, totalEnEspera) === null}
+              onClick={() => void mover(fila, 1)}
+            >
+              <ChevronDown className="h-3.5 w-3.5" />
+            </button>
+          </span>
+        )}
+        {(orden?.estado === "EN_ESPERA" || orden?.estado === "EN_PROGRESO") && (
+          <button
+            type="button"
+            className="text-xs font-semibold text-orange-600"
+            title="Registrar una demora: se recalculan los tiempos y, si hace falta, la cola"
+            onClick={() =>
+              setDemoraPara({
+                ordenId: orden.ordenId,
+                destinatario: {
+                  nombre: orden.clienteNombre,
+                  patente: orden.patente,
+                  modelo: orden.modelo,
+                  telefono: orden.clienteTelefono,
+                },
+                servicio: orden.servicioNombre,
+              })
+            }
+          >
+            Demora
+          </button>
+        )}
+        {orden && ESTADOS_CON_LINK.includes(orden.estado) && (
+          <button
+            type="button"
+            className="text-xs font-semibold text-[#6C5CE7]"
+            title="Copiar o enviar al cliente el link para seguir su vehículo"
+            onClick={() =>
+              setLinkPara({
+                ordenId: orden.ordenId,
+                destinatario: {
+                  nombre: orden.clienteNombre,
+                  patente: orden.patente,
+                  modelo: orden.modelo,
+                  telefono: orden.clienteTelefono,
+                },
+              })
+            }
+          >
+            Link
+          </button>
+        )}
         {a?.estado === "EN_ESPERA" && (
           <>
             {!tienePuestoAsignado(a, boxes) && libres[0] && (
@@ -275,24 +496,37 @@ export default function ColaPage() {
             {finalizando === rowId ? "Finalizando..." : "Finalizar servicio"}
           </button>
         )}
-        {a && a.estado !== "RETIRADO" && (
+        {((a && a.estado !== "RETIRADO") || orden?.estado === "LISTO") && (
           <button
             type="button"
             className="text-xs font-semibold text-emerald-600 disabled:cursor-not-allowed disabled:text-slate-400"
-            disabled={a.estado !== "LISTO"}
+            disabled={estado !== "LISTO" || retirando === rowId}
             title={
-              a.estado === "LISTO"
+              estado === "LISTO"
                 ? "Registrar el retiro del vehículo finalizado"
                 : "El retiro se habilita cuando el vehículo está finalizado"
             }
-            onClick={() => retirar(a.id)}
+            onClick={() => void registrarRetiro(fila)}
           >
-            Registrar retiro
+            {retirando === rowId ? "Registrando retiro…" : "Registrar retiro"}
           </button>
         )}
-        {orden?.estado === "LISTO" && (
-          <span className="text-xs text-slate-400">Esperando retiro</span>
-        )}
+        {orden?.estado === "LISTO" &&
+          (aviso?.confirmadoEl ? (
+            <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-600">
+              <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />
+              Aviso enviado
+            </span>
+          ) : (
+            <button
+              type="button"
+              className="text-xs font-semibold text-[#6C5CE7]"
+              title="Preparar el mensaje manual de WhatsApp para avisar que el vehículo está listo"
+              onClick={() => setAvisoPara(orden.ordenId)}
+            >
+              Notificar por WhatsApp
+            </button>
+          ))}
       </>
     );
   };
@@ -327,7 +561,15 @@ export default function ColaPage() {
         />
         <KpiCard
           label="Capacidad del playón"
-          value={`${boxes.filter((b) => b.estado === "OCUPADO").length}/${boxes.length}`}
+          value={textoCapacidadPlayon(
+            apiConfig.USE_MOCK
+              ? {
+                  estado: "ok",
+                  ocupados: boxes.filter((b) => b.estado === "OCUPADO").length,
+                  maximo: boxes.length,
+                }
+              : capacidadPlayon,
+          )}
           tone="orange"
           icon={<Car className="h-5 w-5" />}
         />
@@ -388,6 +630,7 @@ export default function ColaPage() {
                     "Cliente",
                     "Servicio",
                     "Turno / ingreso",
+                    ...(apiConfig.USE_MOCK ? [] : ["Estimado"]),
                     "Estado",
                     "Acción",
                   ].map((h) => (
@@ -400,7 +643,10 @@ export default function ColaPage() {
               <tbody>
                 {mensajeVacio && (
                   <tr>
-                    <td colSpan={8} className="py-8 text-center text-sm text-slate-500">
+                    <td
+                      colSpan={apiConfig.USE_MOCK ? 8 : 9}
+                      className="py-8 text-center text-sm text-slate-500"
+                    >
                       {mensajeVacio}
                     </td>
                   </tr>
@@ -417,10 +663,14 @@ export default function ColaPage() {
                       <td>{d.cliente}</td>
                       <td className="text-slate-500">{d.servicio}</td>
                       <td>{turnoOIngreso(d.horarioReserva, d.ingreso)}</td>
+                      {!apiConfig.USE_MOCK && <td className="text-xs">{estimado(d.tiempo)}</td>}
                       <td>
                         <StageBadge estado={d.estado} />
                       </td>
-                      <td className="space-x-2">{acciones(fila)}</td>
+                      <td>
+                        {/* Con las flechas y "Demora" las acciones ya no entran en una línea. */}
+                        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">{acciones(fila)}</div>
+                      </td>
                     </tr>
                   );
                 })}
@@ -464,6 +714,9 @@ export default function ColaPage() {
                     </div>
                     <div>{etiquetaOrigen(d.origen)}</div>
                     <div className="self-center">{turnoOIngreso(d.horarioReserva, d.ingreso)}</div>
+                    {!apiConfig.USE_MOCK && d.tiempo && (
+                      <div className="col-span-2">{estimado(d.tiempo)}</div>
+                    )}
                   </dl>
                   <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1">{acciones(fila)}</div>
                 </li>
@@ -476,7 +729,7 @@ export default function ColaPage() {
           <ul className="space-y-3">
             {enEspera.map((fila) => {
               const d = describir(fila);
-              const horario = d.horarioReserva ?? d.horaEstimada;
+              const horario = d.horarioReserva ?? d.tiempo?.inicioEstimado ?? d.horaEstimada;
               return (
                 <li
                   key={d.id}
@@ -502,6 +755,248 @@ export default function ColaPage() {
           </ul>
         </Card>
       </div>
+
+      {demoraPara && (
+        <DemoraDialog
+          ordenId={demoraPara.ordenId}
+          destinatario={demoraPara.destinatario}
+          servicio={demoraPara.servicio}
+          onClose={() => setDemoraPara(null)}
+          onGuardada={(demora) => {
+            notificar(mensajeDemora(
+              demoraPara.destinatario.patente,
+              demora.minutos,
+              demora.colaReordenada,
+            ));
+            void cargarColaBackend();
+          }}
+        />
+      )}
+      {linkPara && <LinkDialog {...linkPara} onClose={() => setLinkPara(null)} />}
+      {avisoPara !== null && (
+        <AvisoListoDialog
+          key={avisoPara}
+          ordenId={avisoPara}
+          onClose={() => setAvisoPara(null)}
+          onConfirmado={(aviso) => {
+            setAvisosListos((actual) => {
+              const siguiente = new Map(actual);
+              siguiente.set(aviso.ordenId, aviso);
+              return siguiente;
+            });
+            notificar(`Aviso confirmado: ${aviso.patente} ya fue notificado al cliente.`);
+          }}
+        />
+      )}
     </div>
+  );
+}
+
+/** Las atenciones activas, las que tienen un seguimiento para mandarle al cliente. */
+const ESTADOS_CON_LINK: string[] = ["EN_ESPERA", "EN_PROGRESO", "LISTO"];
+
+type LinkParaOrden = { ordenId: number; destinatario: DestinatarioSeguimiento };
+
+/** HU-53: el link de seguimiento de una atención, para copiarlo o mandárselo al cliente. */
+function LinkDialog({ ordenId, destinatario, onClose }: LinkParaOrden & { onClose: () => void }) {
+  const dialogo = useRef<HTMLDialogElement>(null);
+
+  useEffect(() => {
+    dialogo.current?.showModal();
+  }, []);
+
+  return (
+    <dialog
+      ref={dialogo}
+      onCancel={(e) => {
+        e.preventDefault();
+        onClose();
+      }}
+      aria-labelledby="link-titulo"
+      className="fixed inset-0 m-auto w-[calc(100%-2rem)] max-w-md rounded-2xl border border-slate-200 bg-white p-6 text-navy shadow-xl backdrop:bg-slate-900/40"
+    >
+      <h2 id="link-titulo" className="text-lg font-bold">
+        Seguimiento del cliente
+      </h2>
+      <div className="mt-2 flex items-center gap-2 text-sm text-slate-500">
+        {destinatario.nombre} · <Plate value={destinatario.patente} />
+      </div>
+      <div className="mt-5 text-sm">
+        <LinkSeguimiento ordenId={ordenId} destinatario={destinatario} />
+      </div>
+      <div className="mt-6 flex justify-end">
+        <button type="button" className="btn-ghost" onClick={onClose}>
+          Cerrar
+        </button>
+      </div>
+    </dialog>
+  );
+}
+
+/**
+ * HU-28: registrar una demora sobre una atención activa. El backend recalcula los tiempos y, si la
+ * demora obliga a adelantar una reserva próxima, reorganiza la cola; la pantalla la vuelve a pedir.
+ */
+function DemoraDialog({
+  ordenId,
+  destinatario,
+  servicio,
+  onClose,
+  onGuardada,
+}: {
+  ordenId: number;
+  destinatario: DestinatarioSeguimiento;
+  servicio: string;
+  onClose: () => void;
+  onGuardada: (demora: DemoraApi) => void;
+}) {
+  const dialogo = useRef<HTMLDialogElement>(null);
+  const [minutos, setMinutos] = useState("10");
+  const [motivo, setMotivo] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [guardando, setGuardando] = useState(false);
+  const [demoraRegistrada, setDemoraRegistrada] = useState<DemoraApi | null>(null);
+  const finEstimado = demoraRegistrada?.finEstimado;
+
+  useEffect(() => {
+    dialogo.current?.showModal();
+  }, []);
+
+  const guardar = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (guardando) return;
+    const cantidad = Number(minutos);
+    const invalido = validarDemora(cantidad, motivo);
+    if (invalido) {
+      setError(invalido);
+      return;
+    }
+    setGuardando(true);
+    setError(null);
+    try {
+      const demora = await registrarDemora(ordenId, {
+        minutos: cantidad,
+        motivo: motivo.trim() || undefined,
+      });
+      setGuardando(false);
+      setDemoraRegistrada(demora);
+      onGuardada(demora);
+    } catch (e) {
+      setError(
+        e instanceof ApiError
+          ? e.message
+          : "No se pudo registrar la demora. Verificá la conexión e intentá de nuevo.",
+      );
+      setGuardando(false);
+    }
+  };
+
+  return (
+    <dialog
+      ref={dialogo}
+      onCancel={(e) => {
+        e.preventDefault();
+        if (!guardando) onClose();
+      }}
+      aria-labelledby="demora-titulo"
+      className="fixed inset-0 m-auto w-[calc(100%-2rem)] max-w-md rounded-2xl border border-slate-200 bg-white p-6 text-navy shadow-xl backdrop:bg-slate-900/40"
+    >
+      <h2 id="demora-titulo" className="text-lg font-bold">
+        Registrar demora
+      </h2>
+      <div className="mt-2 flex items-center gap-2 text-sm text-slate-500">
+        {destinatario.nombre} · <Plate value={destinatario.patente} /> · {servicio}
+      </div>
+      {demoraRegistrada ? (
+        <div className="mt-5 space-y-4">
+          <p role="status" className="rounded-xl bg-emerald-50 p-3 text-sm text-emerald-800">
+            Demora registrada. La cola y el seguimiento ya muestran los tiempos recalculados.
+          </p>
+          {demoraRegistrada.estimacionActualizada && finEstimado ? (
+            <>
+              <p className="text-sm font-semibold">
+                Nuevo horario estimado de finalización: {time(finEstimado)}
+                <span className="ml-2 font-normal text-slate-500">
+                  {new Date(finEstimado).toLocaleDateString("es-AR", {
+                    day: "2-digit",
+                    month: "2-digit",
+                    year: "numeric",
+                  })}
+                </span>
+              </p>
+              <LinkSeguimiento
+                key={demoraRegistrada.id}
+                ordenId={ordenId}
+                destinatario={destinatario}
+                mensaje={(url) =>
+                  mensajeDemoraSeguimiento(
+                    destinatario,
+                    servicio,
+                    finEstimado,
+                    url,
+                  )
+                }
+              />
+            </>
+          ) : (
+            <p className="text-sm text-slate-600">
+              El horario de finalización no cambió o no se puede estimar con los datos actuales;
+              no se prepara un aviso con una hora imprecisa.
+            </p>
+          )}
+          <div className="flex justify-end">
+            <button type="button" className="btn-ghost" onClick={onClose}>
+              Cerrar
+            </button>
+          </div>
+        </div>
+      ) : (
+        <form onSubmit={(e) => void guardar(e)} className="mt-5">
+          <fieldset disabled={guardando} className="space-y-4">
+            <label className="block text-sm">
+              Minutos de demora
+              <input
+                className="field mt-1"
+                type="number"
+                inputMode="numeric"
+                min={DEMORA_MIN}
+                max={DEMORA_MAX}
+                step={1}
+                value={minutos}
+                onChange={(e) => setMinutos(e.target.value)}
+                required
+              />
+            </label>
+            <label className="block text-sm">
+              Motivo (opcional)
+              <input
+                className="field mt-1"
+                maxLength={MOTIVO_MAX}
+                placeholder="Ej.: tapizado muy sucio"
+                value={motivo}
+                onChange={(e) => setMotivo(e.target.value)}
+              />
+            </label>
+            <p className="text-xs text-slate-500">
+              Se recalculan los tiempos estimados y, si hace falta, la cola se reorganiza respetando las
+              reservas próximas. Los vehículos en lavado no cambian de lugar.
+            </p>
+            {error && (
+              <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-700">
+                {error}
+              </p>
+            )}
+            <div className="flex flex-wrap gap-3">
+              <button className="btn-primary" type="submit">
+                {guardando ? "Registrando…" : "Registrar demora"}
+              </button>
+              <button className="btn-ghost" type="button" onClick={onClose}>
+                Cancelar
+              </button>
+            </div>
+          </fieldset>
+        </form>
+      )}
+    </dialog>
   );
 }

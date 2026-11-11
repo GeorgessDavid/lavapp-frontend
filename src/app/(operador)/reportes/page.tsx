@@ -7,12 +7,13 @@ import { Card, KpiCard } from "@/components/ui/Card";
 import { reportes } from "@/lib/mock-data";
 import { money } from "@/lib/format";
 import { useApp } from "@/lib/store";
+import { puedeVerReportes } from "@/lib/permisos";
 
 export default function ReportesPage() {
   const { user } = useApp();
   const router = useRouter();
   useEffect(() => {
-    if (user && user.rol !== "DUENO") router.replace("/dashboard");
+    if (user && !puedeVerReportes(user)) router.replace("/dashboard");
   }, [user, router]);
 
   const max = Math.max(...reportes.vehiculosPorDia.map((d) => d.cantidad));

@@ -7,10 +7,8 @@ import {
   CalendarDays,
   Car,
   ClipboardList,
-  Gift,
   Gauge,
   History,
-  BarChart3,
   BadgeDollarSign,
   LockKeyhole,
   LayoutDashboard,
@@ -18,21 +16,25 @@ import {
   Menu,
   ParkingCircle,
   Search,
+  Timer,
   Users,
   type LucideIcon,
 } from "lucide-react";
 import { Logo } from "@/components/brand/Logo";
+import { useAccesoProtegido } from "@/components/layout/useAccesoProtegido";
 import { useApp } from "@/lib/store";
-import { fetchPlanActual } from "@/lib/api";
-import type { PlanActual, PlanFeature } from "@/lib/types";
+import { apiConfig, fetchPlanActual } from "@/lib/api";
+import { fetchTiemposCola } from "@/lib/api-cola";
+import { puedeAbrirRuta } from "@/lib/permisos";
+import type { PlanActual, PlanFeature, User } from "@/lib/types";
 import { clock, todayLabel } from "@/lib/format";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 
+// Qué roles ven cada sección lo decide lib/permisos.ts (las mismas reglas que protegen la ruta).
 const nav: {
   href: string;
   label: string;
   icon: LucideIcon;
-  owner?: boolean;
   feature?: PlanFeature;
 }[] = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, feature: "CAPACIDAD" },
@@ -43,30 +45,36 @@ const nav: {
   { href: "/reservas", label: "Reservas", icon: CalendarDays, feature: "RESERVAS" },
   { href: "/historial", label: "Historial", icon: History, feature: "HISTORIAL_BASICO" },
   { href: "/vehiculos", label: "Vehículos", icon: Users },
-  { href: "/fidelizacion", label: "Fidelización", icon: Gift },
-  { href: "/reportes", label: "Reportes", icon: BarChart3, owner: true },
-  { href: "/plan", label: "Mi Plan", icon: BadgeDollarSign, owner: true },
+  { href: "/servicios", label: "Servicios", icon: Timer },
+  { href: "/plan", label: "Mi Plan", icon: BadgeDollarSign },
+  { href: "/admin/lavaderos", label: "Configuración", icon: Users, feature: "CONFIGURACION" },
 ];
+
+const ETIQUETA_ROL: Record<NonNullable<User["rolSistema"]>, string> = {
+  ADMIN_LAVAPP: "Administrador",
+  DUENO_LAVADERO: "Dueño",
+  ENCARGADO: "Encargado",
+  EMPLEADO: "Empleado",
+};
 
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { user, logout, toast, clearToast, atenciones } = useApp();
+  const { sesion, logout, toast, clearToast, atenciones } = useApp();
+  // Solo hay usuario cuando la sesión está confirmada y puede ver esta ruta; si no, se redirige.
+  const user = useAccesoProtegido("operador");
   const [now, setNow] = useState(clock());
   const [plan, setPlan] = useState<PlanActual | null>(null);
   const [planError, setPlanError] = useState("");
   // En celular la barra lateral es un cajón que se abre desde el encabezado; en escritorio es
   // la columna fija de siempre. Se cierra al elegir una sección.
   const [menuAbierto, setMenuAbierto] = useState(false);
-
-  useEffect(() => {
-    if (!user) router.replace("/login");
-    else if (user.rol === "FLOTA") router.replace("/flotas");
-  }, [user, router]);
+  const [busqueda, setBusqueda] = useState("");
+  const [demorasReales, setDemorasReales] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
-    if (!user || user.rol === "FLOTA") return;
+    if (!user) return;
     if (user.lavaderoId === undefined) return;
     const lavaderoId = user.lavaderoId;
     const cargarPlan = () => fetchPlanActual(lavaderoId)
@@ -104,14 +112,45 @@ export function AppShell({ children }: { children: ReactNode }) {
     return () => clearTimeout(id);
   }, [toast, clearToast]);
 
-  const alerts = useMemo(
-    () => atenciones.filter((a) => a.demoraMin > 0 && a.estado !== "RETIRADO"),
-    [atenciones],
-  );
+  useEffect(() => {
+    if (apiConfig.USE_MOCK || !user?.lavaderoId) return;
+    const lavaderoId = user.lavaderoId;
+    let vigente = true;
+    const cargar = () => {
+      void fetchTiemposCola(lavaderoId)
+        .then((tiempos) => {
+          if (vigente) setDemorasReales(tiempos.filter((tiempo) => tiempo.demoraMin > 0).length);
+        })
+        .catch(() => {
+          if (vigente) setDemorasReales(0);
+        });
+    };
+    cargar();
+    const id = window.setInterval(cargar, 30_000);
+    return () => {
+      vigente = false;
+      window.clearInterval(id);
+    };
+  }, [user]);
 
-  if (!user || user.rol === "FLOTA") return null;
+  const demorasDemo = atenciones.filter((a) => a.demoraMin > 0 && a.estado !== "RETIRADO").length;
+  const hayDemoras = apiConfig.USE_MOCK ? demorasDemo > 0 : demorasReales > 0;
 
-  const items = nav.filter((item) => !item.owner || user.rol === "DUENO");
+  function irABusqueda(event: FormEvent) {
+    event.preventDefault();
+    const texto = busqueda.trim();
+    router.push(texto ? `/vehiculos?q=${encodeURIComponent(texto)}` : "/vehiculos");
+  }
+
+  if (!user) {
+    return sesion === "verificando" ? (
+      <p role="status" className="grid min-h-screen place-items-center bg-surface text-sm text-slate-400">
+        Verificando la sesión…
+      </p>
+    ) : null;
+  }
+
+  const items = nav.filter((item) => puedeAbrirRuta(user, item.href));
   const planForUser =
     plan?.lavaderoId === user.lavaderoId ? plan : null;
   const visiblePlanError =
@@ -139,7 +178,9 @@ export function AppShell({ children }: { children: ReactNode }) {
           {items.map((item) => {
             const active = pathname === item.href;
             const Icon = item.icon;
-            const hasFeature =
+            // Permitir acceso total si el usuario es Administrador de LavApp
+            const isAdmin = user.rolSistema === "ADMIN_LAVAPP";
+            const hasFeature = isAdmin ||
               !item.feature ||
               Boolean(
                 planForUser?.funcionalidades.includes(item.feature),
@@ -214,20 +255,30 @@ export function AppShell({ children }: { children: ReactNode }) {
           <p className="hidden text-xs capitalize text-slate-400 lg:block">
             {todayLabel()} · {now}
           </p>
-          <div className="hidden max-w-lg flex-1 items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm text-slate-400 sm:flex">
+          <form
+            className="hidden max-w-lg flex-1 items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm text-slate-400 sm:flex"
+            onSubmit={irABusqueda}
+          >
             <Search className="h-4 w-4" />
             <input
-              className="w-full bg-transparent outline-none"
+              className="w-full bg-transparent text-navy outline-none"
+              aria-label="Buscar cliente, vehículo o patente"
               placeholder="Buscar cliente, vehículo o patente..."
+              value={busqueda}
+              onChange={(event) => setBusqueda(event.target.value)}
             />
-          </div>
+          </form>
           <div className="flex items-center gap-3">
-            <span className="relative grid h-10 w-10 place-items-center rounded-full bg-white text-navy shadow-sm">
+            <Link
+              href="/dashboard"
+              aria-label={hayDemoras ? "Hay demoras en la cola" : "Sin demoras"}
+              className="relative grid h-10 w-10 place-items-center rounded-full bg-white text-navy shadow-sm"
+            >
               <Bell className="h-4 w-4" />
-              {alerts.length > 0 && (
+              {hayDemoras && (
                 <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-orange-500" />
               )}
-            </span>
+            </Link>
             <div className="flex items-center gap-2 rounded-full bg-white py-1.5 pr-3 pl-1.5 shadow-sm">
               <span className="grid h-8 w-8 place-items-center rounded-full bg-[#6C5CE7] text-xs font-bold text-white">
                 {user.nombre
@@ -239,7 +290,9 @@ export function AppShell({ children }: { children: ReactNode }) {
               <div className="hidden leading-tight sm:block">
                 <p className="text-xs font-semibold text-navy">{user.nombre}</p>
                 <p className="text-[10px] text-slate-400">
-                  {user.rol === "DUENO" ? "Dueño" : "Operador"}
+                  {user.rolSistema
+                    ? ETIQUETA_ROL[user.rolSistema]
+                    : user.rol === "DUENO" ? "Dueño" : "Operador"}
                 </p>
               </div>
             </div>
