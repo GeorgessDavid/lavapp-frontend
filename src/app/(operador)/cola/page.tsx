@@ -22,7 +22,12 @@ import { useApp } from "@/lib/store";
 import { useLookups } from "@/lib/lookups";
 import { time, timeWithSeconds } from "@/lib/format";
 import { tienePuestoAsignado } from "@/lib/box-assignment";
-import { ApiError, apiConfig, fetchOrdenes, finalizarServicioApi, retirarOrdenApi } from "@/lib/api";
+import { ApiError, apiConfig, fetchCapacidad, fetchOrdenes, finalizarServicioApi, retirarOrdenApi } from "@/lib/api";
+import {
+  lecturaCapacidadFallida,
+  textoCapacidadPlayon,
+  type LecturaCapacidadPlayon,
+} from "@/lib/capacidad-playon";
 import {
   fetchTiemposCola,
   moverEnCola,
@@ -100,6 +105,7 @@ export default function ColaPage() {
   // HU-36: el aviso manual de una orden LISTO y el estado ya confirmado de cada una.
   const [avisoPara, setAvisoPara] = useState<number | null>(null);
   const [avisosListos, setAvisosListos] = useState<Map<number, AvisoListoApi>>(() => new Map());
+  const [capacidadPlayon, setCapacidadPlayon] = useState<LecturaCapacidadPlayon | null>(null);
   const lavaderoId = user?.lavaderoId;
   const libres = boxes.filter((b) => b.estado === "DISPONIBLE");
   const activas = atenciones.filter((a) => a.estado !== "RETIRADO");
@@ -124,11 +130,20 @@ export default function ColaPage() {
 
     setCargandoBackend(true);
     try {
-      const [enEspera, enLavado, listas, tiemposApi] = await Promise.all([
+      const [enEspera, enLavado, listas, tiemposApi, capacidad] = await Promise.all([
         fetchOrdenes(lavaderoId, "EN_ESPERA"),
         fetchOrdenes(lavaderoId, "EN_PROGRESO"),
         fetchOrdenes(lavaderoId, "LISTO"),
         fetchTiemposCola(lavaderoId).catch(() => null),
+        fetchCapacidad(lavaderoId, 0)
+          .then((actual) => ({
+            estado: "ok" as const,
+            ocupados: actual.lugaresOcupados,
+            maximo: actual.capacidadMaxima,
+          }))
+          .catch((error: unknown) =>
+            lecturaCapacidadFallida(error instanceof ApiError ? error.status : 0),
+          ),
       ]);
       const avisos = new Map<number, AvisoListoApi>();
       await Promise.all(
@@ -138,6 +153,7 @@ export default function ColaPage() {
         }),
       );
       setOrdenesBackend({ enEspera, enLavado, listas });
+      setCapacidadPlayon(capacidad);
       setAvisosListos(avisos);
       setTiempos(indexarTiempos(tiemposApi ?? []));
       setActualizadoEl(new Date().toISOString());
@@ -545,7 +561,15 @@ export default function ColaPage() {
         />
         <KpiCard
           label="Capacidad del playón"
-          value={`${boxes.filter((b) => b.estado === "OCUPADO").length}/${boxes.length}`}
+          value={textoCapacidadPlayon(
+            apiConfig.USE_MOCK
+              ? {
+                  estado: "ok",
+                  ocupados: boxes.filter((b) => b.estado === "OCUPADO").length,
+                  maximo: boxes.length,
+                }
+              : capacidadPlayon,
+          )}
           tone="orange"
           icon={<Car className="h-5 w-5" />}
         />
